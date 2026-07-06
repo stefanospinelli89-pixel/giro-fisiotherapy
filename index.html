@@ -1,0 +1,2970 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Giro Fisiotherapy</title>
+<style>
+  :root {
+    --teal-50: #E1F5EE; --teal-100: #9FE1CB; --teal-200: #5DCAA5;
+    --teal-400: #1D9E75; --teal-600: #0F6E56; --teal-800: #085041; --teal-900: #04342C;
+    --gray-50: #F1EFE8; --gray-100: #D3D1C7; --gray-200: #B4B2A9;
+    --gray-400: #888780; --gray-600: #5F5E5A; --gray-800: #444441; --gray-900: #2C2C2A;
+    --coral-50: #FAECE7; --coral-100: #F5C4B3; --coral-200: #F0997B;
+    --coral-400: #D85A30; --coral-600: #993C1D; --coral-800: #712B13;
+    --amber-50: #FAEEDA; --amber-100: #FAC775; --amber-400: #BA7517; --amber-800: #633806;
+    --blue-50: #E6F1FB; --blue-100: #B5D4F4; --blue-400: #378ADD; --blue-800: #0C447C;
+
+    --bg: #f8f7f4;
+    --surface: #ffffff;
+    --border: rgba(0,0,0,0.1);
+    --border-strong: rgba(0,0,0,0.18);
+    --text: #2C2C2A;
+    --text-muted: #5F5E5A;
+    --text-hint: #888780;
+    --radius: 10px;
+    --radius-lg: 14px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a18;
+      --surface: #242422;
+      --border: rgba(255,255,255,0.1);
+      --border-strong: rgba(255,255,255,0.18);
+      --text: #F1EFE8;
+      --text-muted: #B4B2A9;
+      --text-hint: #888780;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  /* Top nav */
+  .topbar {
+    background: var(--surface);
+    border-bottom: 0.5px solid var(--border);
+    padding: 0 1.25rem;
+    display: flex;
+    align-items: center;
+    height: 56px;
+    gap: 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar-brand {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--teal-600);
+    letter-spacing: -0.3px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .topbar-brand svg { width: 20px; height: 20px; }
+  .topbar-nav {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+  }
+  .nav-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+  .nav-btn:hover { background: var(--gray-50); color: var(--text); }
+  .nav-btn.active {
+    background: var(--teal-50);
+    color: var(--teal-600);
+    font-weight: 500;
+  }
+  @media (prefers-color-scheme: dark) {
+    .nav-btn:hover { background: rgba(255,255,255,0.06); }
+    .nav-btn.active { background: rgba(29,158,117,0.15); }
+  }
+
+  /* Layout */
+  .main { max-width: 900px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+
+  /* Section views */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* Page header */
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .page-title { font-size: 20px; font-weight: 500; letter-spacing: -0.3px; }
+  .page-subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: var(--radius);
+    border: 0.5px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: 400;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--gray-50); }
+  .btn-primary {
+    background: var(--teal-400);
+    color: white;
+    border-color: var(--teal-600);
+    font-weight: 500;
+  }
+  .btn-primary:hover { background: var(--teal-600); }
+  .btn-danger { color: var(--coral-600); border-color: var(--coral-100); }
+  .btn-danger:hover { background: var(--coral-50); }
+  .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+  @media (prefers-color-scheme: dark) {
+    .btn:hover { background: rgba(255,255,255,0.06); }
+    .btn-primary { background: var(--teal-400); }
+    .btn-primary:hover { background: var(--teal-200); }
+  }
+
+  /* Patient cards grid */
+  .patients-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+  }
+
+  .patient-card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.1rem;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .patient-card:hover { border-color: var(--border-strong); }
+  .patient-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .avatar {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--teal-50);
+    color: var(--teal-800);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 500;
+    flex-shrink: 0;
+  }
+  @media (prefers-color-scheme: dark) {
+    .avatar { background: rgba(29,158,117,0.2); color: var(--teal-100); }
+  }
+  .patient-name { font-size: 15px; font-weight: 500; }
+  .patient-address { font-size: 13px; color: var(--text-muted); margin-top: 1px; }
+
+  .patient-tags {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;
+  }
+  .tag {
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: var(--gray-50);
+    color: var(--gray-800);
+    border: 0.5px solid var(--border);
+  }
+  .tag-teal { background: var(--teal-50); color: var(--teal-800); border-color: var(--teal-100); }
+  .tag-amber { background: var(--amber-50); color: var(--amber-800); border-color: var(--amber-100); }
+  .tag-coral { background: var(--coral-50); color: var(--coral-800); border-color: var(--coral-100); }
+  .tag-blue { background: var(--blue-50); color: var(--blue-800); border-color: var(--blue-100); }
+  @media (prefers-color-scheme: dark) {
+    .tag { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+    .tag-teal { background: rgba(29,158,117,0.15); color: var(--teal-100); }
+    .tag-amber { background: rgba(186,117,23,0.15); color: var(--amber-100); }
+    .tag-coral { background: rgba(216,90,48,0.15); color: var(--coral-100); }
+    .tag-blue { background: rgba(55,138,221,0.15); color: var(--blue-100); }
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+  }
+  .empty-state svg { width: 48px; height: 48px; margin: 0 auto 1rem; color: var(--gray-200); display: block; }
+  .empty-state h3 { font-size: 16px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+  .empty-state p { font-size: 14px; }
+
+  /* Modal overlay */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 200;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+  }
+  .modal-overlay.open { display: flex; }
+  @media (min-width: 600px) {
+    .modal-overlay { align-items: center; padding: 1rem; }
+  }
+
+  .modal {
+    background: var(--surface);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    width: 100%;
+    max-width: 540px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 1.25rem;
+  }
+  @media (min-width: 600px) {
+    .modal { border-radius: var(--radius-lg); }
+  }
+
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1.25rem;
+  }
+  .modal-title { font-size: 17px; font-weight: 500; }
+  .modal-close {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: var(--gray-50);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .modal-close:hover { background: var(--gray-100); }
+  @media (prefers-color-scheme: dark) {
+    .modal-close { background: rgba(255,255,255,0.08); }
+    .modal-close:hover { background: rgba(255,255,255,0.14); }
+  }
+
+  /* Form */
+  .form-group { margin-bottom: 1rem; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    font-weight: 400;
+  }
+  input[type="text"], input[type="tel"], input[type="number"],
+  select, textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 0.5px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.15s;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--teal-400);
+  }
+  textarea { resize: vertical; min-height: 72px; }
+
+  .form-section-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-hint);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 1.25rem 0 0.75rem;
+  }
+
+  /* Orari vietati */
+  .orari-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-auto-rows: auto;
+    gap: 4px;
+    margin-bottom: 0.5rem;
+  }
+  .day-label {
+    font-size: 11px;
+    text-align: center;
+    color: var(--text-hint);
+    padding-bottom: 2px;
+    font-weight: 500;
+  }
+  .time-slot {
+    height: 28px;
+    border-radius: 5px;
+    border: 0.5px solid var(--border);
+    background: var(--bg);
+    font-size: 10px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.12s;
+    display: flex; align-items: center; justify-content: center;
+    text-align: center;
+    line-height: 1.2;
+    user-select: none;
+  }
+  .time-slot:hover { background: var(--teal-50); border-color: var(--teal-200); }
+  .time-slot.blocked {
+    background: var(--coral-50);
+    border-color: var(--coral-200);
+    color: var(--coral-800);
+  }
+  @media (prefers-color-scheme: dark) {
+    .time-slot.blocked { background: rgba(216,90,48,0.2); color: var(--coral-100); }
+    .time-slot:hover { background: rgba(29,158,117,0.15); }
+  }
+
+  .orari-legend {
+    display: flex; gap: 12px; font-size: 12px; color: var(--text-muted); margin-top: 6px;
+  }
+  .orari-legend span { display: flex; align-items: center; gap: 4px; }
+  .suggestion-item {
+    padding: 9px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 0.5px solid var(--border);
+    color: var(--text);
+    line-height: 1.4;
+  }
+  .suggestion-item:last-child { border-bottom: none; }
+  .suggestion-item:hover { background: var(--teal-50); }
+  .suggestion-item .suggestion-main { font-weight: 500; }
+  .suggestion-item .suggestion-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  @media (prefers-color-scheme: dark) {
+    .suggestion-item:hover { background: rgba(29,158,117,0.15); }
+  }
+
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 2px;
+  }
+  .legend-dot-free { background: var(--bg); border: 0.5px solid var(--border-strong); }
+  .legend-dot-blocked { background: var(--coral-50); border: 0.5px solid var(--coral-200); }
+
+  .modal-actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 0.5px solid var(--border);
+  }
+
+  /* Planning view */
+  .planning-toolbar {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .week-nav {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 4px 8px;
+  }
+  .week-nav-label { font-size: 13px; font-weight: 500; min-width: 120px; text-align: center; }
+  .week-nav-btn {
+    width: 28px; height: 28px;
+    border: none; background: transparent; cursor: pointer;
+    color: var(--text-muted); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .week-nav-btn:hover { background: var(--gray-50); }
+
+  .week-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+
+  .day-column {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .day-header {
+    padding: 8px 10px;
+    border-bottom: 0.5px solid var(--border);
+    background: var(--gray-50);
+  }
+  @media (prefers-color-scheme: dark) {
+    .day-header { background: rgba(255,255,255,0.04); }
+  }
+  .day-name { font-size: 12px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+  .day-date { font-size: 13px; color: var(--text); margin-top: 1px; }
+
+  .day-appointments { padding: 8px; min-height: 80px; }
+
+  .appt-card {
+    background: var(--teal-50);
+    border: 0.5px solid var(--teal-100);
+    border-radius: 8px;
+    padding: 7px 9px;
+    margin-bottom: 6px;
+    cursor: grab;
+    transition: opacity 0.15s;
+  }
+  .appt-card:last-child { margin-bottom: 0; }
+  .appt-card:active { cursor: grabbing; opacity: 0.7; }
+  .appt-name { font-size: 13px; font-weight: 500; color: var(--teal-800); }
+  .appt-time { font-size: 12px; color: var(--teal-600); margin-top: 1px; }
+  .appt-addr { font-size: 11px; color: var(--teal-600); margin-top: 2px; }
+  @media (prefers-color-scheme: dark) {
+    .appt-card { background: rgba(29,158,117,0.15); border-color: rgba(29,158,117,0.3); }
+    .appt-name { color: var(--teal-100); }
+    .appt-time, .appt-addr { color: var(--teal-200); }
+  }
+
+  .day-appointments.drag-over {
+    background: var(--teal-50);
+    border-radius: 8px;
+    outline: 2px dashed var(--teal-200);
+    outline-offset: -4px;
+  }
+  @media (prefers-color-scheme: dark) {
+    .day-appointments.drag-over { background: rgba(29,158,117,0.1); }
+  }
+
+  .appt-move-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 7px;
+    padding-top: 6px;
+    border-top: 0.5px solid var(--teal-100);
+  }
+  .appt-move-row .move-label {
+    font-size: 11px;
+    color: var(--text-hint);
+    width: 100%;
+    margin-bottom: 2px;
+  }
+  .appt-move-btn {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 0.5px solid var(--teal-200);
+    background: var(--surface);
+    color: var(--teal-600);
+    cursor: pointer;
+    transition: background 0.12s;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .appt-move-btn:hover { background: var(--teal-50); }
+  .appt-cancel-btn {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 0.5px solid var(--coral-200);
+    background: var(--surface);
+    color: var(--coral-600);
+    cursor: pointer;
+    font-family: inherit;
+    margin-top: 4px;
+    width: 100%;
+    text-align: center;
+  }
+  .appt-cancel-btn:hover { background: var(--coral-50); }
+  @media (prefers-color-scheme: dark) {
+    .appt-move-row { border-top-color: rgba(29,158,117,0.2); }
+    .appt-move-btn { background: transparent; color: var(--teal-100); border-color: rgba(29,158,117,0.3); }
+    .appt-move-btn:hover { background: rgba(29,158,117,0.15); }
+    .appt-cancel-btn { background: transparent; color: var(--coral-100); border-color: rgba(216,90,48,0.3); }
+    .appt-cancel-btn:hover { background: rgba(216,90,48,0.15); }
+  }
+
+  .day-km {
+    padding: 6px 10px;
+    border-top: 0.5px solid var(--border);
+    font-size: 11px;
+    color: var(--text-hint);
+    display: flex; align-items: center; gap: 4px;
+  }
+
+  /* Settings */
+  .settings-card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .settings-card h3 {
+    font-size: 15px; font-weight: 500; margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .settings-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 0.5px solid var(--border);
+    gap: 1rem;
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-label { font-size: 14px; }
+  .settings-hint { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .settings-value {
+    font-size: 13px; color: var(--text-muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block;
+  }
+  .status-dot.ok { background: #1D9E75; }
+  .status-dot.warn { background: #BA7517; }
+  .status-dot.err { background: #D85A30; }
+
+  .api-key-input-wrap {
+    display: flex; gap: 8px; margin-top: 8px;
+  }
+  .api-key-input-wrap input {
+    flex: 1;
+    font-family: monospace;
+    font-size: 13px;
+  }
+
+  /* Notification toast */
+  .toast {
+    position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+    background: var(--gray-900);
+    color: white;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-size: 14px;
+    z-index: 999;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+
+  /* Orari scroll on small screens */
+  .orari-scroll { overflow-x: auto; }
+
+  /* Confirm dialog */
+  .confirm-dialog {
+    text-align: center; padding: 0.5rem 0;
+  }
+  .confirm-dialog p { font-size: 14px; color: var(--text-muted); margin-top: 6px; margin-bottom: 1.5rem; }
+</style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<!-- Top nav -->
+<nav class="topbar">
+  <div class="topbar-brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+    Giro
+  </div>
+  <div class="topbar-nav">
+    <span id="sync-status" style="font-size:12px;color:var(--text-hint);display:flex;align-items:center;gap:4px">
+      <span id="sync-dot" style="width:7px;height:7px;border-radius:50%;background:var(--gray-200);display:inline-block"></span>
+      <span id="sync-text">Connessione...</span>
+    </span>
+    <button class="nav-btn active" onclick="showView('pazienti')">Pazienti</button>
+    <button class="nav-btn" onclick="showView('pianificazione')">Pianificazione</button>
+    <button class="nav-btn" onclick="showView('impostazioni')">Impostazioni</button>
+  </div>
+</nav>
+
+<!-- BANNER PROMEMORIA PIANO -->
+<div id="plan-reminder" style="display:none;background:var(--amber-50);border-bottom:0.5px solid var(--amber-100);padding:10px 1.25rem;align-items:center;gap:10px;flex-wrap:wrap">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber-400)" stroke-width="2" flex-shrink="0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <span style="font-size:13px;color:var(--amber-800);flex:1">È domenica — momento ideale per generare il piano della settimana!</span>
+  <button class="btn btn-primary" style="font-size:13px;padding:6px 12px" onclick="reminderAndGenerate()">Genera ora</button>
+  <button class="btn" style="font-size:13px;padding:6px 12px" onclick="dismissReminder()">Dopo</button>
+</div>
+
+<main class="main">
+
+  <!-- PAZIENTI VIEW -->
+  <div class="view active" id="view-pazienti">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Pazienti</div>
+        <div class="page-subtitle" id="patients-subtitle">Nessun paziente ancora</div>
+      </div>
+      <button class="btn btn-primary" onclick="openPatientModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nuovo paziente
+      </button>
+    </div>
+    <div id="group-filter-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1rem">
+      <!-- generato via JS -->
+    </div>
+    <div class="patients-grid" id="patients-grid">
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+        </svg>
+        <h3>Nessun paziente</h3>
+        <p>Aggiungi il primo paziente per iniziare</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIANIFICAZIONE VIEW -->
+  <div class="view" id="view-pianificazione">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Pianificazione</div>
+        <div class="page-subtitle">Rivedi e aggiusta il giro prima di inviarlo al calendario</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" onclick="generatePlan()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+          </svg>
+          Genera piano
+        </button>
+        <button class="btn" onclick="openMonthSummary()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            <line x1="8" y1="14" x2="16" y2="14"/>
+          </svg>
+          Riepilogo mese
+        </button>
+        <button class="btn btn-primary" onclick="sendToCalendar()" id="btn-send-cal" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          Invia a Google Calendar
+        </button>
+      </div>
+    </div>
+
+    <!-- Eccezioni settimanali -->
+    <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:1rem;margin-bottom:1rem">
+      <div style="font-size:13px;font-weight:500;margin-bottom:8px">Giorni di assenza <span style="color:var(--text-hint);font-weight:400">(escludi dalla prossima generazione)</span></div>
+      <div id="exceptions-grid" style="display:flex;flex-direction:column;gap:8px">
+        <!-- generato via JS -->
+      </div>
+    </div>
+
+    <div class="planning-toolbar">
+      <div class="week-nav">
+        <button class="week-nav-btn" onclick="changeWeek(-1)">&#8249;</button>
+        <span class="week-nav-label" id="week-label">Settimana 1</span>
+        <button class="week-nav-btn" onclick="changeWeek(1)">&#8250;</button>
+      </div>
+      <span style="font-size:13px;color:var(--text-hint)">Usa i bottoni sugli appuntamenti per spostarli</span>
+    </div>
+
+    <div class="week-grid" id="week-grid">
+      <!-- giorni generati via JS -->
+    </div>
+  </div>
+
+  <!-- IMPOSTAZIONI VIEW -->
+  <div class="view" id="view-impostazioni">
+    <div class="page-header">
+      <div class="page-title">Impostazioni</div>
+    </div>
+
+    <div class="settings-card">
+      <h3>Google Maps & Calendar API</h3>
+
+      <div class="form-group">
+        <label>Chiave API Google (Maps Distance Matrix + Calendar)</label>
+        <div class="api-key-input-wrap">
+          <input type="text" id="input-gmap-key" placeholder="AIza..." autocomplete="off">
+          <button class="btn" onclick="saveApiKey()">Salva</button>
+        </div>
+      </div>
+
+      <div class="settings-row">
+        <div>
+          <div class="settings-label">Stato connessione Maps</div>
+          <div class="settings-hint">Necessaria per ottimizzare il percorso</div>
+        </div>
+        <div class="settings-value">
+          <span class="status-dot warn" id="maps-status-dot"></span>
+          <span id="maps-status-text">Non configurato</span>
+        </div>
+      </div>
+
+      <div class="settings-row">
+        <div>
+          <div class="settings-label">Stato connessione Calendar</div>
+          <div class="settings-hint">Necessaria per inviare gli appuntamenti</div>
+        </div>
+        <div class="settings-value">
+          <span class="status-dot warn" id="cal-status-dot"></span>
+          <span id="cal-status-text">Non configurato</span>
+        </div>
+      </div>
+
+      <div style="margin-top:1rem;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" onclick="connectGoogle()" id="btn-google-login" style="gap:8px">
+          <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Accedi con Google
+        </button>
+        <button class="btn btn-danger" onclick="logoutGoogle()" id="btn-google-logout" style="display:none">
+          Disconnetti Google
+        </button>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3>Orario di lavoro</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:1rem">Imposta inizio e fine per ogni giorno. Lascia vuoto per i giorni non lavorativi.</p>
+      <div id="weekly-hours-grid">
+        <!-- generato via JS -->
+      </div>
+      <div style="margin-top:1rem;padding-top:1rem;border-top:0.5px solid var(--border)">
+        <label style="font-size:14px;font-weight:500;display:block;margin-bottom:8px">Preferenza distribuzione pazienti</label>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0">
+            <input type="radio" name="distribuzione" value="accorpa" id="dist-accorpa" style="margin-top:3px;width:auto">
+            <div>
+              <div style="font-size:14px">Accorpa in pochi giorni</div>
+              <div style="font-size:12px;color:var(--text-muted)">Es. lun/mar/mer pieni, gio/ven liberi</div>
+            </div>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0">
+            <input type="radio" name="distribuzione" value="distribuisci" id="dist-distribuisci" style="margin-top:3px;width:auto" checked>
+            <div>
+              <div style="font-size:14px">Distribuisci lungo la settimana</div>
+              <div style="font-size:12px;color:var(--text-muted)">Carico bilanciato su tutti i giorni lavorativi</div>
+            </div>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0">
+            <input type="radio" name="distribuzione" value="nessun-giorno-libero" id="dist-nessun-libero" style="margin-top:3px;width:auto">
+            <div>
+              <div style="font-size:14px">Nessun giorno libero</div>
+              <div style="font-size:12px;color:var(--text-muted)">Almeno un paziente ogni giorno lavorativo attivo</div>
+            </div>
+          </label>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:1rem">
+        <button class="btn btn-primary" onclick="saveWorkHours()">Salva</button>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3>Gruppi pazienti</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:1rem">Crea gruppi per organizzare e filtrare i pazienti.</p>
+      <div id="groups-list" style="margin-bottom:1rem">
+        <!-- generato via JS -->
+      </div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="new-group-name" placeholder="Nome gruppo (es. Zona Nord)" style="flex:1">
+        <button class="btn btn-primary" onclick="addGroup()">Aggiungi</button>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3>Indirizzi di partenza e arrivo</h3>
+      <div class="form-group">
+        <label>Indirizzo di partenza (studio / casa)</label>
+        <input type="text" id="base-address" placeholder="Via Roma 1, Milano">
+      </div>
+      <div class="form-group">
+        <label>Indirizzo di arrivo</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);margin:0 0 6px;cursor:pointer">
+          <input type="checkbox" id="arrival-same" onchange="toggleArrivalSame()" style="width:auto">
+          Uguale all'indirizzo di partenza
+        </label>
+        <input type="text" id="arrival-address" placeholder="Via Roma 1, Milano">
+      </div>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn btn-primary" onclick="saveBaseAddress()">Salva</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- MODAL PAZIENTE -->
+<div class="modal-overlay" id="patient-modal-overlay" onclick="closeModalOnBg(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Nuovo paziente</span>
+      <button class="modal-close" onclick="closePatientModal()">&#x2715;</button>
+    </div>
+
+    <div class="form-section-title">Dati personali</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Nome</label>
+        <input type="text" id="p-nome" placeholder="Mario">
+      </div>
+      <div class="form-group">
+        <label>Cognome</label>
+        <input type="text" id="p-cognome" placeholder="Rossi">
+      </div>
+    </div>
+    <div class="form-group" style="position:relative">
+      <label>Indirizzo</label>
+      <input type="text" id="p-indirizzo" placeholder="Via Roma 10, Milano" autocomplete="off"
+        oninput="onIndirizzoInput()" onblur="hideAddressSuggestions()">
+      <div id="address-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:0.5px solid var(--border-strong);border-radius:var(--radius);box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:300;max-height:200px;overflow-y:auto;margin-top:2px"></div>
+    </div>
+    <div class="form-group">
+      <label>Telefono</label>
+      <input type="tel" id="p-telefono" placeholder="+39 333 000 0000">
+    </div>
+    <div class="form-group">
+      <label>Gruppo <span style="color:var(--text-hint);font-weight:400">(facoltativo)</span></label>
+      <select id="p-gruppo">
+        <option value="">Nessun gruppo</option>
+      </select>
+    </div>
+
+    <div class="form-section-title">Trattamento</div>
+    <div class="form-row" id="row-sedute-settimana">
+      <div class="form-group">
+        <label>Sedute a settimana</label>
+        <select id="p-sedute">
+          <option>1</option><option>2</option><option selected>3</option>
+          <option>4</option><option>5</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Durata seduta (min)</label>
+        <input type="number" id="p-durata" value="45" min="15" max="120" step="15">
+      </div>
+    </div>
+    <div id="hint-sedute-auto" style="display:none;font-size:12px;color:var(--teal-600);margin-bottom:8px;padding:6px 10px;background:var(--teal-50);border-radius:8px">
+      ✓ Le sedute settimanali verranno calcolate automaticamente in base alle sedute totali e alle date
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Sedute totali da fare <span style="color:var(--text-hint);font-weight:400">(facoltativo)</span></label>
+        <input type="number" id="p-sedute-totali" placeholder="es. 20" min="1" max="200" onchange="checkAutoSedute()">
+      </div>
+      <div class="form-group">
+        <label>Sedute già effettuate <span style="color:var(--text-hint);font-weight:400">(facoltativo)</span></label>
+        <input type="number" id="p-sedute-fatte" placeholder="es. 0" min="0" max="200" value="0">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Data inizio trattamento <span style="color:var(--text-hint);font-weight:400">(facoltativo)</span></label>
+        <input type="date" id="p-data-inizio" onchange="checkAutoSedute()">
+      </div>
+      <div class="form-group">
+        <label>Data fine trattamento <span style="color:var(--text-hint);font-weight:400">(facoltativo)</span></label>
+        <input type="date" id="p-data-fine" onchange="checkAutoSedute()">
+      </div>
+    </div>
+    <div id="date-error" style="display:none;font-size:12px;color:var(--coral-600);padding:6px 10px;background:var(--coral-50);border-radius:8px;margin-top:-6px;margin-bottom:8px">
+      ⚠️ La data di fine deve essere successiva alla data di inizio
+    </div>
+
+    <div class="form-section-title">Orari non disponibili</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Clicca le fasce per bloccarle (rosso = non disponibile)</p>
+    <div class="orari-scroll">
+      <div class="orari-grid" id="orari-grid">
+        <!-- generato via JS -->
+      </div>
+    </div>
+    <div class="orari-legend">
+      <span><span class="legend-dot legend-dot-free"></span> Disponibile</span>
+      <span><span class="legend-dot legend-dot-blocked"></span> Non disponibile</span>
+    </div>
+
+    <div class="form-group" style="margin-top:1rem">
+      <label>Note libere</label>
+      <textarea id="p-note" placeholder="Preferisce il mattino, abita al 4° piano..."></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="btn-delete-patient" onclick="deleteCurrentPatient()" style="display:none;margin-right:auto">Elimina</button>
+      <button class="btn" onclick="closePatientModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="savePatient()">Salva paziente</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL RIEPILOGO MESE -->
+<div class="modal-overlay" id="summary-modal-overlay">
+  <div class="modal" style="max-width:600px;max-height:85vh">
+    <div class="modal-header">
+      <span class="modal-title" id="summary-title">Riepilogo mese</span>
+      <button class="modal-close" onclick="document.getElementById('summary-modal-overlay').classList.remove('open')">&#x2715;</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap">
+      <button class="btn" id="sort-name-btn" onclick="setSummarySort('name')">Ordina per nome</button>
+      <button class="btn" id="sort-group-btn" onclick="setSummarySort('group')">Ordina per gruppo</button>
+      <button class="btn" style="margin-left:auto" onclick="exportSummaryPDF()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Scarica PDF
+      </button>
+    </div>
+    <div id="summary-content" style="overflow-y:auto;max-height:55vh">
+      <!-- generato via JS -->
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SCELTA CALENDARIO -->
+<div class="modal-overlay" id="cal-picker-overlay">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <span class="modal-title">Scegli il calendario</span>
+      <button class="modal-close" onclick="document.getElementById('cal-picker-overlay').classList.remove('open')">&#x2715;</button>
+    </div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:1rem">Seleziona su quale calendario Google inviare gli appuntamenti:</p>
+    <div id="cal-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:1.5rem">
+      <!-- generato via JS -->
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn" onclick="document.getElementById('cal-picker-overlay').classList.remove('open')">Annulla</button>
+      <button class="btn btn-primary" onclick="confirmSendToCalendar()">Invia</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFERMA -->
+<div class="modal-overlay" id="confirm-modal-overlay">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-header">
+      <span class="modal-title" id="confirm-title">Conferma</span>
+      <button class="modal-close" onclick="closeConfirm()">&#x2715;</button>
+    </div>
+    <div class="confirm-dialog">
+      <p id="confirm-msg"></p>
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button class="btn" onclick="closeConfirm()">Annulla</button>
+        <button class="btn btn-danger" id="confirm-ok-btn">Conferma</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────
+// ── Supabase ──────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://poemvhveesdtmsncpdcm.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvZW12aHZlZXNkdG1zbmNwZGNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NzEyOTYsImV4cCI6MjA5NzQ0NzI5Nn0.-Ua3fi3fdhTQ4eBplocvKQfFZgdoBnhxX5uWAn_GBnA';
+let sb = null;
+
+function setSyncStatus(state, text) {
+  const dot = document.getElementById('sync-dot');
+  const txt = document.getElementById('sync-text');
+  if (!dot || !txt) return;
+  const colors = { ok: '#1D9E75', err: '#D85A30', loading: '#BA7517' };
+  dot.style.background = colors[state] || colors.loading;
+  txt.textContent = text;
+}
+
+async function dbLoadAll() {
+  setSyncStatus('loading', 'Sincronizzazione...');
+  try {
+    const { data: pData, error: pErr } = await sb.from('patients').select('*');
+    if (pErr) throw pErr;
+    if (pData) patients = pData.map(r => r.data);
+
+    const { data: sData, error: sErr } = await sb.from('settings').select('*').eq('id', 'main').single();
+    if (sData) settings = sData.data;
+    // PGRST116 = row not found, non è un errore bloccante
+    if (sErr && sErr.code !== 'PGRST116') throw sErr;
+
+    const { data: plData, error: plErr } = await sb.from('plan').select('*').eq('id', 'current').single();
+    if (plData) plan = plData.data;
+    if (plErr && plErr.code !== 'PGRST116') throw plErr;
+
+    const { data: grData, error: grErr } = await sb.from('settings').select('*').eq('id', 'groups').single();
+    if (grData) groups = grData.data;
+    if (grErr && grErr.code !== 'PGRST116') throw grErr;
+
+    // Salva in localStorage come backup locale
+    localStorage.setItem('giro_patients', JSON.stringify(patients));
+    localStorage.setItem('giro_settings', JSON.stringify(settings));
+    localStorage.setItem('giro_plan', JSON.stringify(plan));
+    localStorage.setItem('giro_groups', JSON.stringify(groups));
+
+    setSyncStatus('ok', 'Sincronizzato');
+  } catch(err) {
+    console.warn('⚠️ Supabase non raggiungibile, uso localStorage', err);
+    patients = JSON.parse(localStorage.getItem('giro_patients') || '[]');
+    settings = JSON.parse(localStorage.getItem('giro_settings') || '{}');
+    plan = JSON.parse(localStorage.getItem('giro_plan') || 'null');
+    groups = JSON.parse(localStorage.getItem('giro_groups') || '[]');
+    setSyncStatus('err', 'Offline');
+  }
+}
+
+async function dbSavePatients() {
+  localStorage.setItem('giro_patients', JSON.stringify(patients));
+  setSyncStatus('loading', 'Salvataggio...');
+  try {
+    await sb.from('patients').delete().neq('id', '__none__');
+    if (patients.length > 0) {
+      await sb.from('patients').insert(patients.map(p => ({ id: p.id, data: p })));
+    }
+    setSyncStatus('ok', 'Sincronizzato');
+  } catch(err) {
+    console.warn('Supabase save patients error:', err);
+    setSyncStatus('err', 'Errore salvataggio');
+  }
+}
+
+async function dbSaveSettings() {
+  localStorage.setItem('giro_settings', JSON.stringify(settings));
+  setSyncStatus('loading', 'Salvataggio...');
+  try {
+    await sb.from('settings').upsert({ id: 'main', data: settings, updated_at: new Date().toISOString() });
+    setSyncStatus('ok', 'Sincronizzato');
+  } catch(err) {
+    console.warn('Supabase save settings error:', err);
+    setSyncStatus('err', 'Errore salvataggio');
+  }
+}
+
+async function dbSavePlan() {
+  localStorage.setItem('giro_plan', JSON.stringify(plan));
+  setSyncStatus('loading', 'Salvataggio...');
+  try {
+    await sb.from('plan').upsert({ id: 'current', data: plan, updated_at: new Date().toISOString() });
+    setSyncStatus('ok', 'Sincronizzato');
+  } catch(err) {
+    console.warn('Supabase save plan error:', err);
+    setSyncStatus('err', 'Errore salvataggio');
+  }
+}
+
+let patients = JSON.parse(localStorage.getItem('giro_patients') || '[]');
+let settings = JSON.parse(localStorage.getItem('giro_settings') || '{}');
+let plan = JSON.parse(localStorage.getItem('giro_plan') || 'null');
+let editingPatientId = null;
+let currentWeekOffset = 0;
+
+const DAYS = ['Lun','Mar','Mer','Gio','Ven'];
+const TIMES = ['13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00'];
+
+// ── Navigation ────────────────────────────────────────────────────
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    if (b.textContent.toLowerCase().includes(name.substring(0,5))) b.classList.add('active');
+  });
+  if (name === 'pianificazione') { renderWeekGrid(); renderExceptionsGrid(); }
+  if (name === 'impostazioni') { loadSettings(); renderGroupsList(); }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+function showToast(msg, duration = 2200) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+// ── Patients ──────────────────────────────────────────────────────
+function savePatients() {
+  dbSavePatients();
+  renderPatients();
+}
+
+function initOrariGrid() {
+  const grid = document.getElementById('orari-grid');
+  grid.innerHTML = '';
+
+  const weeklyHours = settings.weeklyHours || DEFAULT_HOURS;
+  const activeDays = [0,1,2,3,4,5].filter(d => weeklyHours[d]?.active);
+
+  // Calcola le fasce orarie attive per ogni giorno
+  // e trova tutte le fasce uniche nell'intera settimana lavorativa
+  function getDaySlots(dayIdx) {
+    const h = weeklyHours[dayIdx] || { start: '13:00', end: '19:00' };
+    const start = timeToMinutes(h.start);
+    const end = timeToMinutes(h.end);
+    return TIMES.filter(t => {
+      const tm = timeToMinutes(t);
+      return tm >= start && tm < end;
+    });
+  }
+
+  // Raccoglie tutte le fasce orarie uniche tra tutti i giorni attivi
+  const allSlots = [...new Set(activeDays.flatMap(d => getDaySlots(d)))].sort();
+
+  // Aggiorna il CSS della griglia con il numero di colonne corretto
+  grid.style.gridTemplateColumns = `repeat(${activeDays.length}, 1fr)`;
+
+  // Intestazioni giorni
+  activeDays.forEach(di => {
+    const el = document.createElement('div');
+    el.className = 'day-label';
+    el.textContent = DAYS_FULL[di]?.substring(0,3) || DAYS[di];
+    grid.appendChild(el);
+  });
+
+  // Slot: una riga per fascia oraria, una colonna per giorno attivo
+  allSlots.forEach(t => {
+    const ti = TIMES.indexOf(t);
+    activeDays.forEach(di => {
+      const el = document.createElement('div');
+      const daySlots = getDaySlots(di);
+      if (!daySlots.includes(t)) {
+        // Fascia fuori orario per questo giorno — grigia e non cliccabile
+        el.className = 'time-slot';
+        el.style.background = 'var(--gray-50)';
+        el.style.opacity = '0.3';
+        el.style.cursor = 'default';
+        el.style.pointerEvents = 'none';
+        el.textContent = t;
+      } else {
+        el.className = 'time-slot';
+        el.textContent = t;
+        el.dataset.day = di;
+        el.dataset.time = ti;
+        el.onclick = () => el.classList.toggle('blocked');
+      }
+      grid.appendChild(el);
+    });
+  });
+}
+
+function openPatientModal(patientId = null) {
+  editingPatientId = patientId;
+  initOrariGrid();
+  const modal = document.getElementById('patient-modal-overlay');
+  const deleteBtn = document.getElementById('btn-delete-patient');
+
+  if (patientId) {
+    const p = patients.find(x => x.id === patientId);
+    document.getElementById('modal-title').textContent = p.nome + ' ' + p.cognome;
+    document.getElementById('p-nome').value = p.nome;
+    document.getElementById('p-cognome').value = p.cognome;
+    document.getElementById('p-indirizzo').value = p.indirizzo;
+    document.getElementById('p-telefono').value = p.telefono || '';
+    document.getElementById('p-sedute').value = p.sedute;
+    document.getElementById('p-durata').value = p.durata;
+    document.getElementById('p-sedute-totali').value = p.sediatotali || '';
+    document.getElementById('p-sedute-fatte').value = p.sedutefatte || 0;
+    document.getElementById('p-data-inizio').value = p.dataInizio || '';
+    document.getElementById('p-data-fine').value = p.dataFine || '';
+    document.getElementById('p-note').value = p.note || '';
+    deleteBtn.style.display = 'inline-flex';
+    updateGroupSelect();
+    document.getElementById('p-gruppo').value = p.gruppo || '';
+    checkAutoSedute();
+    // restore blocked
+    if (p.orariBloccati) {
+      p.orariBloccati.forEach(({day, time}) => {
+        const slot = document.querySelector(`.time-slot[data-day="${day}"][data-time="${time}"]`);
+        if (slot) slot.classList.add('blocked');
+      });
+    }
+  } else {
+    document.getElementById('modal-title').textContent = 'Nuovo paziente';
+    ['p-nome','p-cognome','p-indirizzo','p-telefono','p-note','p-sedute-totali','p-data-inizio','p-data-fine'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('p-sedute').value = '3';
+    document.getElementById('p-durata').value = '45';
+    document.getElementById('p-sedute-fatte').value = '0';
+    deleteBtn.style.display = 'none';
+    updateGroupSelect();
+    checkAutoSedute();
+  }
+  modal.classList.add('open');
+}
+
+function closePatientModal() {
+  document.getElementById('patient-modal-overlay').classList.remove('open');
+  editingPatientId = null;
+}
+
+function closeModalOnBg(e) {
+  if (e.target === document.getElementById('patient-modal-overlay')) closePatientModal();
+}
+
+function getInitials(nome, cognome) {
+  return ((nome||'')[0]||'').toUpperCase() + ((cognome||'')[0]||'').toUpperCase();
+}
+
+function savePatient() {
+  const nome = document.getElementById('p-nome').value.trim();
+  const cognome = document.getElementById('p-cognome').value.trim();
+  if (!nome || !cognome) { showToast('Inserisci nome e cognome'); return; }
+  const indirizzo = document.getElementById('p-indirizzo').value.trim();
+  if (!indirizzo) { showToast('Inserisci l\'indirizzo'); return; }
+
+  // Validazione date
+  const dataInizio = document.getElementById('p-data-inizio').value;
+  const dataFine = document.getElementById('p-data-fine').value;
+  if (dataInizio && dataFine && new Date(dataFine) <= new Date(dataInizio)) {
+    showToast('⚠️ La data di fine deve essere successiva alla data di inizio');
+    return;
+  }
+
+  const orariBloccati = [];
+  document.querySelectorAll('.time-slot.blocked').forEach(el => {
+    orariBloccati.push({ day: parseInt(el.dataset.day), time: parseInt(el.dataset.time) });
+  });
+
+  const data = {
+    id: editingPatientId || Date.now().toString(),
+    nome, cognome, indirizzo,
+    telefono: document.getElementById('p-telefono').value.trim(),
+    sedute: parseInt(document.getElementById('p-sedute').value),
+    durata: parseInt(document.getElementById('p-durata').value),
+    sediatotali: parseInt(document.getElementById('p-sedute-totali').value) || null,
+    sedutefatte: parseInt(document.getElementById('p-sedute-fatte').value) || 0,
+    dataInizio: document.getElementById('p-data-inizio').value || null,
+    dataFine: document.getElementById('p-data-fine').value || null,
+    note: document.getElementById('p-note').value.trim(),
+    gruppo: document.getElementById('p-gruppo').value || null,
+    orariBloccati,
+    createdAt: editingPatientId ? patients.find(x => x.id === editingPatientId)?.createdAt : Date.now()
+  };
+
+  if (editingPatientId) {
+    patients = patients.map(p => p.id === editingPatientId ? data : p);
+    showToast('Paziente aggiornato');
+  } else {
+    patients.push(data);
+    showToast('Paziente aggiunto');
+  }
+
+  savePatients();
+  closePatientModal();
+}
+
+function deleteCurrentPatient() {
+  openConfirm(
+    'Elimina paziente',
+    'Questa azione non può essere annullata.',
+    () => {
+      patients = patients.filter(p => p.id !== editingPatientId);
+      savePatients();
+      closePatientModal();
+      showToast('Paziente eliminato');
+    }
+  );
+}
+
+function renderPatients() {
+  const grid = document.getElementById('patients-grid');
+  const subtitle = document.getElementById('patients-subtitle');
+  const filtered = activeGroupFilter === null ? patients
+    : activeGroupFilter === '__none__' ? patients.filter(p => !p.gruppo)
+    : patients.filter(p => p.gruppo === activeGroupFilter);
+
+  subtitle.textContent = patients.length === 0
+    ? 'Nessun paziente ancora'
+    : filtered.length + ' di ' + patients.length + (patients.length === 1 ? ' paziente' : ' pazienti');
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+      </svg>
+      <h3>${patients.length === 0 ? 'Nessun paziente' : 'Nessun paziente in questo gruppo'}</h3>
+      <p>${patients.length === 0 ? 'Aggiungi il primo paziente per iniziare' : 'Prova a selezionare un altro gruppo'}</p>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(p => {
+    const gruppo = groups.find(g => g.id === p.gruppo);
+    const rimanenti = p.sediatotali ? p.sediatotali - (p.sedutefatte||0) : null;
+    const progressTag = p.sediatotali
+      ? `<span class="tag tag-blue">${rimanenti} sedute rimanenti</span>`
+      : '';
+    const completatoTag = p.sediatotali && rimanenti <= 0
+      ? '<span class="tag tag-coral">Completato</span>'
+      : '';
+    return `
+    <div class="patient-card" onclick="openPatientModal('${p.id}')">
+      <div class="patient-card-header">
+        <div class="avatar">${getInitials(p.nome, p.cognome)}</div>
+        <div>
+          <div class="patient-name">${p.nome} ${p.cognome}</div>
+          <div class="patient-address">${p.indirizzo}</div>
+        </div>
+      </div>
+      <div class="patient-tags">
+        <span class="tag tag-teal">${p.sedute}x/settimana</span>
+        <span class="tag">${p.durata} min</span>
+        ${gruppo ? `<span class="tag" style="background:var(--blue-50);color:var(--blue-800);border-color:var(--blue-100)">${gruppo.name}</span>` : ''}
+        ${progressTag}
+        ${p.dataFine ? `<span class="tag tag-amber">Fino al ${formatDateShort(p.dataFine)}</span>` : ''}
+        ${completatoTag}
+        ${p.orariBloccati && p.orariBloccati.length > 0 ? '<span class="tag tag-coral">Orari vietati</span>' : ''}
+        ${p.note ? '<span class="tag tag-amber">Note</span>' : ''}
+      </div>
+    </div>
+  `}).join('');
+}
+
+// ── Planning ──────────────────────────────────────────────────────
+function getWeekDates(offset) {
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - now.getDay() + 1 + offset * 7);
+  return Array.from({length: 6}, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d;
+  });
+}
+
+function formatDate(d) {
+  return d.getDate() + ' ' + ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'][d.getMonth()];
+}
+
+function changeWeek(dir) {
+  const newOffset = currentWeekOffset + dir;
+  if (newOffset < 0) { showToast('Non puoi andare al passato'); return; }
+  if (newOffset > 1) { showToast('Il piano copre max 2 settimane'); return; }
+  currentWeekOffset = newOffset;
+  renderWeekGrid();
+}
+
+function renderWeekGrid() {
+  const weeklyHours = settings.weeklyHours || DEFAULT_HOURS;
+  const activeDayIndices = [0,1,2,3,4,5].filter(d => weeklyHours[d]?.active);
+  const allDates = getWeekDates(currentWeekOffset);
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  document.getElementById('week-label').textContent = currentWeekOffset === 0 ? 'Settimana corrente' : 'Settimana successiva';
+
+  const grid = document.getElementById('week-grid');
+  grid.style.gridTemplateColumns = `repeat(${Math.max(1, activeDayIndices.length)}, 1fr)`;
+  const weekPlan = plan ? plan[currentWeekOffset] : null;
+
+  grid.innerHTML = activeDayIndices.map(i => {
+    const date = allDates[i];
+    const isPast = date && date < today;
+    const appts = weekPlan ? (weekPlan[i] || []) : [];
+    const km = appts.length > 0 ? (appts[0]?.km || 0) : 0;
+    const kmText = km > 0 ? `~${km.toFixed(1)} km` : '';
+    return `
+      <div class="day-column" style="${isPast ? 'opacity:0.45;pointer-events:none' : ''}">
+        <div class="day-header" style="${isPast ? 'background:var(--gray-50)' : ''}">
+          <div class="day-name">${DAYS_FULL[i]?.substring(0,3) || DAYS[i]}</div>
+          <div class="day-date">${date ? formatDate(date) : ''}${isPast ? ' <span style="font-size:10px;color:var(--text-hint)">(passato)</span>' : ''}</div>
+        </div>
+        <div class="day-appointments" id="day-${currentWeekOffset}-${i}">
+          ${appts.length === 0
+            ? `<div style="font-size:13px;color:var(--text-hint);padding:8px 2px">Nessun appuntamento</div>`
+            : appts.map((a, ai) => `
+              <div class="appt-card">
+                <div class="appt-name">${a.name}</div>
+                <div class="appt-time">${a.time} · ${a.durata} min</div>
+                <div class="appt-addr">${a.addr}</div>
+                ${a.mapsUrl ? `<a href="${a.mapsUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;color:var(--teal-400);text-decoration:none;margin-top:4px;display:block">↗ Apri in Maps</a>` : ''}
+                ${!isPast ? `<div class="appt-move-row">
+                  <span class="move-label">Sposta in:</span>
+                  ${activeDayIndices.filter(d => d !== i && !(allDates[d] < today)).map(d => `
+                    <button class="appt-move-btn" onclick="moveAppt(${currentWeekOffset},${i},${ai},${d})">
+                      ${DAYS_FULL[d]?.substring(0,3)}
+                    </button>
+                  `).join('')}
+                  <button class="appt-cancel-btn" onclick="cancelAppt(${currentWeekOffset},${i},${ai})">✕</button>
+                </div>` : ''}
+              </div>
+            `).join('')
+          }
+        </div>
+        ${km > 0 ? `<div class="day-km">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 12l4-4M3 12l4 4"/></svg>
+          ${kmText} · ${appts.length} pazienti
+        </div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+async function cancelAppt(week, day, apptIdx) {
+  if (!plan || !plan[week] || !plan[week][day]) return;
+  const appt = plan[week][day][apptIdx];
+  if (!appt) return;
+  openConfirm(
+    'Annulla appuntamento',
+    `Vuoi annullare la seduta di ${appt.name}? L'appuntamento verrà rimosso dal piano.`,
+    async () => {
+      plan[week][day] = plan[week][day].filter((_, i) => i !== apptIdx);
+      await recalcDayKm(week, day);
+      localStorage.setItem('giro_plan', JSON.stringify(plan));
+      await dbSavePlan();
+      renderWeekGrid();
+      showToast('Appuntamento annullato');
+    }
+  );
+}
+
+async function moveAppt(week, fromDay, apptIdx, toDay) {
+  if (!plan || !plan[week] || !plan[week][fromDay]) return;
+  const srcAppts = plan[week][fromDay];
+  if (apptIdx < 0 || apptIdx >= srcAppts.length) return;
+
+  const moved = { ...srcAppts[apptIdx] };
+
+  // Verifica se l'appuntamento entra negli orari del giorno di destinazione
+  const weeklyHours = settings.weeklyHours || DEFAULT_HOURS;
+  const dayHours = weeklyHours[toDay] || { start: '13:00', end: '19:00' };
+  const startMins = timeToMinutes(dayHours.start);
+  const endMins = timeToMinutes(dayHours.end);
+  const existingAppts = plan[week][toDay] || [];
+
+  // Simula l'inserimento per vedere se entra
+  const testAppts = [...existingAppts, moved];
+  const testResult = assignTimes(testAppts, new Array(testAppts.length).fill(20), startMins / 60, endMins, toDay);
+  if (testResult.length < testAppts.length) {
+    showToast(`❌ Non entra negli orari di ${DAYS_FULL[toDay]} (${dayHours.start}–${dayHours.end})`, 3500);
+    return; // Non spostare — l'appuntamento rimane dove sta
+  }
+
+  plan[week][fromDay] = srcAppts.filter((_, i) => i !== apptIdx);
+  if (!plan[week][toDay]) plan[week][toDay] = [];
+  plan[week][toDay].push(moved);
+
+  await recalcDayKm(week, toDay);
+  await recalcDayKm(week, fromDay);
+
+  localStorage.setItem('giro_plan', JSON.stringify(plan));
+  await dbSavePlan();
+  renderWeekGrid();
+  showToast('Appuntamento spostato');
+}
+
+// ── Eccezioni settimanali ─────────────────────────────────────────
+// Struttura: { 0: [dayIdx, ...], 1: [dayIdx, ...] } per settimana 0 e 1
+let weeklyExceptions = { 0: [], 1: [] };
+
+function renderExceptionsGrid() {
+  const grid = document.getElementById('exceptions-grid');
+  if (!grid) return;
+  const weeklyHours = settings.weeklyHours || DEFAULT_HOURS;
+  const activeDays = [0,1,2,3,4,5].filter(d => weeklyHours[d]?.active);
+
+  grid.innerHTML = [0, 1].map(weekOffset => {
+    const weekDates = getWeekDates(weekOffset);
+    const label = weekOffset === 0 ? 'Settimana corrente' : 'Settimana successiva';
+    return `<div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">${label}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${activeDays.map(d => {
+          const date = weekDates[d];
+          const dateStr = date ? formatDate(date) : '';
+          const isExcluded = weeklyExceptions[weekOffset]?.includes(d);
+          return `<button
+            onclick="toggleException(${weekOffset}, ${d})"
+            style="font-size:12px;padding:4px 10px;border-radius:8px;border:0.5px solid ${isExcluded ? 'var(--coral-400)' : 'var(--border)'};
+            background:${isExcluded ? 'var(--coral-50)' : 'var(--bg)'};
+            color:${isExcluded ? 'var(--coral-700)' : 'var(--text-muted)'};
+            cursor:pointer;font-family:inherit;text-decoration:${isExcluded ? 'line-through' : 'none'}">
+            ${DAYS_FULL[d]?.substring(0,3)} ${dateStr}
+          </button>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleException(weekOffset, dayIdx) {
+  if (!weeklyExceptions[weekOffset]) weeklyExceptions[weekOffset] = [];
+  const idx = weeklyExceptions[weekOffset].indexOf(dayIdx);
+  if (idx >= 0) {
+    weeklyExceptions[weekOffset].splice(idx, 1);
+  } else {
+    weeklyExceptions[weekOffset].push(dayIdx);
+  }
+  renderExceptionsGrid();
+}
+let summarySort = 'name';
+
+function openMonthSummary() {
+  const now = new Date();
+  const monthName = now.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
+  document.getElementById('summary-title').textContent = `Riepilogo ${monthName}`;
+  setSummarySort('name');
+  document.getElementById('summary-modal-overlay').classList.add('open');
+}
+
+function setSummarySort(sort) {
+  summarySort = sort;
+  document.getElementById('sort-name-btn').className = `btn${sort === 'name' ? ' btn-primary' : ''}`;
+  document.getElementById('sort-group-btn').className = `btn${sort === 'group' ? ' btn-primary' : ''}`;
+  renderSummary();
+}
+
+function getSummaryData() {
+  const now = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  firstOfMonth.setHours(0,0,0,0);
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  const fatte = {}, daFare = {};
+  for (const weekOffset of [0, 1]) {
+    const weekDates = getWeekDates(weekOffset);
+    const weekPlan = plan ? plan[weekOffset] : null;
+    if (!weekPlan) continue;
+    for (const dayIdx of [0,1,2,3,4,5]) {
+      const date = weekDates[dayIdx];
+      if (!date || date < firstOfMonth) continue;
+      const appts = weekPlan[dayIdx] || [];
+      for (const appt of appts) {
+        if (date < today) {
+          fatte[appt.id] = (fatte[appt.id] || 0) + 1;
+        } else {
+          daFare[appt.id] = (daFare[appt.id] || 0) + 1;
+        }
+      }
+    }
+  }
+
+  let rows = patients.map(p => ({
+    id: p.id,
+    nome: `${p.nome} ${p.cognome}`,
+    gruppo: groups.find(g => g.id === p.gruppo)?.name || '—',
+    fatte: fatte[p.id] || 0,
+    daFare: daFare[p.id] || 0,
+    totale: (fatte[p.id] || 0) + (daFare[p.id] || 0)
+  })).filter(r => r.totale > 0);
+
+  if (summarySort === 'name') {
+    rows.sort((a, b) => a.nome.localeCompare(b.nome));
+  } else {
+    rows.sort((a, b) => a.gruppo.localeCompare(b.gruppo) || a.nome.localeCompare(b.nome));
+  }
+  return rows;
+}
+
+function renderSummary() {
+  const rows = getSummaryData();
+  const content = document.getElementById('summary-content');
+
+  if (rows.length === 0) {
+    content.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);font-size:14px">Nessuna seduta pianificata per questo mese</div>';
+    return;
+  }
+
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead><tr style="border-bottom:1px solid var(--border)">
+      <th style="text-align:left;padding:8px 6px;color:var(--text-muted);font-weight:500">Paziente</th>
+      <th style="text-align:left;padding:8px 6px;color:var(--text-muted);font-weight:500">Gruppo</th>
+      <th style="text-align:center;padding:8px 6px;color:var(--text-muted);font-weight:500">Fatte</th>
+      <th style="text-align:center;padding:8px 6px;color:var(--text-muted);font-weight:500">Da fare</th>
+      <th style="text-align:center;padding:8px 6px;color:var(--text-muted);font-weight:500">Totale</th>
+    </tr></thead><tbody>`;
+
+  let lastGroup = null;
+  rows.forEach(r => {
+    if (summarySort === 'group' && r.gruppo !== lastGroup) {
+      lastGroup = r.gruppo;
+      html += `<tr><td colspan="5" style="padding:10px 6px 4px;font-size:11px;font-weight:700;color:var(--text-hint);text-transform:uppercase;letter-spacing:0.5px">${r.gruppo}</td></tr>`;
+    }
+    html += `<tr style="border-bottom:0.5px solid var(--border)">
+      <td style="padding:9px 6px">${r.nome}</td>
+      <td style="padding:9px 6px;color:var(--text-muted);font-size:13px">${r.gruppo}</td>
+      <td style="text-align:center;padding:9px 6px"><span class="tag tag-teal">${r.fatte}</span></td>
+      <td style="text-align:center;padding:9px 6px"><span class="tag">${r.daFare}</span></td>
+      <td style="text-align:center;padding:9px 6px;font-weight:500">${r.totale}</td>
+    </tr>`;
+  });
+
+  const totFatte = rows.reduce((s,r) => s+r.fatte, 0);
+  const totDaFare = rows.reduce((s,r) => s+r.daFare, 0);
+  html += `<tr style="border-top:1px solid var(--border);font-weight:500">
+    <td style="padding:9px 6px">Totale</td><td></td>
+    <td style="text-align:center;padding:9px 6px">${totFatte}</td>
+    <td style="text-align:center;padding:9px 6px">${totDaFare}</td>
+    <td style="text-align:center;padding:9px 6px">${totFatte+totDaFare}</td>
+  </tr></tbody></table>`;
+
+  content.innerHTML = html;
+}
+
+function exportSummaryPDF() {
+  const now = new Date();
+  const monthName = now.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
+  const rows = getSummaryData();
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Riepilogo ${monthName}</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 2rem; color: #333; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    p { font-size: 13px; color: #666; margin-bottom: 1.5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; padding: 8px; border-bottom: 2px solid #333; font-weight: 600; }
+    td { padding: 8px; border-bottom: 1px solid #eee; }
+    .total-row td { font-weight: 700; border-top: 2px solid #333; }
+    .center { text-align: center; }
+    .group-header td { padding: 12px 8px 4px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; }
+  </style></head><body>
+  <h1>Riepilogo ${monthName}</h1>
+  <p>Generato il ${now.toLocaleDateString('it-IT')}</p>
+  <table>
+    <thead><tr>
+      <th>Paziente</th><th>Gruppo</th>
+      <th class="center">Sedute fatte</th>
+      <th class="center">Da fare</th>
+      <th class="center">Totale mese</th>
+    </tr></thead><tbody>
+    ${rows.map(r => `<tr><td>${r.nome}</td><td>${r.gruppo}</td>
+      <td class="center">${r.fatte}</td>
+      <td class="center">${r.daFare}</td>
+      <td class="center">${r.totale}</td></tr>`).join('')}
+    <tr class="total-row"><td>Totale</td><td></td>
+      <td class="center">${rows.reduce((s,r)=>s+r.fatte,0)}</td>
+      <td class="center">${rows.reduce((s,r)=>s+r.daFare,0)}</td>
+      <td class="center">${rows.reduce((s,r)=>s+r.totale,0)}</td>
+    </tr></tbody>
+  </table></body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (win) setTimeout(() => win.print(), 500);
+}
+
+// ── Route Optimization ────────────────────────────────────────────
+
+// Nearest-neighbor TSP per ordinare le visite minimizzando la distanza
+function nearestNeighborTSP(distMatrix, start = 0, labels = []) {
+  const n = distMatrix.length;
+  const visited = new Array(n).fill(false);
+  const route = [start];
+  visited[start] = true;
+  for (let step = 1; step < n; step++) {
+    const last = route[route.length - 1];
+    let best = -1, bestDist = Infinity;
+    for (let j = 0; j < n; j++) {
+      if (!visited[j] && distMatrix[last][j] < bestDist) {
+        bestDist = distMatrix[last][j];
+        best = j;
+      }
+    }
+    if (best >= 0) { route.push(best); visited[best] = true; }
+  }
+  if (labels.length > 0) {
+    console.log('🔀 Percorso ottimizzato:', route.map(i => labels[i] || i).join(' → '));
+  }
+  return route;
+}
+
+// Chiama Google Maps Distance Matrix API
+async function fetchDistanceMatrix(origins, destinations, apiKey, departureDateStr) {
+  const orig = encodeURIComponent(origins.join('|'));
+  const dest = encodeURIComponent(destinations.join('|'));
+
+  // Converti la data + orario 13:00 in Unix timestamp per il traffico storico
+  let departureParam = '';
+  if (departureDateStr) {
+    const dt = new Date(departureDateStr + 'T13:00:00');
+    if (!isNaN(dt) && dt > new Date()) {
+      const unix = Math.floor(dt.getTime() / 1000);
+      departureParam = `&departure_time=${unix}&traffic_model=best_guess`;
+    }
+  }
+
+  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${orig}&destinations=${dest}&mode=driving&language=it${departureParam}&key=${apiKey}`;
+  const res = await fetch(`https://corsproxy.io/?${url}`);
+  const data = await res.json();
+  return data;
+}
+
+// Cache geocoding per non ripetere le stesse richieste
+const geocodeCache = {};
+
+async function geocodeAddress(address) {
+  if (geocodeCache[address]) return geocodeCache[address];
+
+  // Tentativo 1: indirizzo completo
+  const result = await tryGeocode(address);
+  if (result) {
+    geocodeCache[address] = result;
+    return result;
+  }
+
+  // Tentativo 2: rimuovi il numero civico (es. "via don bosco 1" → "via don bosco")
+  const withoutNumber = address.replace(/,?\s*\d+[a-z]?\b/gi, '').trim();
+  if (withoutNumber !== address) {
+    const result2 = await tryGeocode(withoutNumber);
+    if (result2) {
+      console.log(`📍 Geocodifica riuscita senza civico: "${withoutNumber}"`);
+      geocodeCache[address] = result2;
+      return result2;
+    }
+  }
+
+  // Tentativo 3: solo città (ultima parte dopo l'ultima virgola)
+  const parts = address.split(',');
+  if (parts.length > 1) {
+    const cityOnly = parts[parts.length - 1].trim();
+    const result3 = await tryGeocode(cityOnly);
+    if (result3) {
+      console.log(`📍 Geocodifica riuscita con sola città: "${cityOnly}"`);
+      geocodeCache[address] = result3;
+      return result3;
+    }
+  }
+
+  console.warn(`❌ Geocodifica fallita per: "${address}"`);
+  return null;
+}
+
+async function tryGeocode(query) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=it`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'it' } });
+    const data = await res.json();
+    if (data && data.length > 0) {
+      const coords = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+      console.log(`📍 Geocodifica OK: "${query}" → ${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}`);
+      return coords;
+    }
+  } catch(err) {
+    console.warn('Geocoding errore:', err);
+  }
+  return null;
+}
+
+// Distanza in km tra due coordinate (formula di Haversine)
+function haversineCoords(a, b) {
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLon = (b.lon - a.lon) * Math.PI / 180;
+  const lat1 = a.lat * Math.PI / 180;
+  const lat2 = b.lat * Math.PI / 180;
+  const x = Math.sin(dLat/2) * Math.sin(dLat/2) +
+             Math.sin(dLon/2) * Math.sin(dLon/2) * Math.cos(lat1) * Math.cos(lat2);
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+}
+
+// Calcola matrice distanze tramite Maps API o geocodifica OSM
+async function buildDistanceMatrix(addresses, apiKey, departureDateStr) {
+  const n = addresses.length;
+  const matrix = Array.from({length: n}, () => new Array(n).fill(0));
+  const timeMatrix = Array.from({length: n}, () => new Array(n).fill(15));
+
+  // Prova con Google Maps API se disponibile
+  if (apiKey && addresses.length <= 10) {
+    try {
+      const data = await fetchDistanceMatrix(addresses, addresses, apiKey, departureDateStr);
+      if (data.status === 'OK') {
+        data.rows.forEach((row, i) => {
+          row.elements.forEach((el, j) => {
+            if (el.status === 'OK') {
+              matrix[i][j] = el.distance.value / 1000;
+              const secs = el.duration_in_traffic ? el.duration_in_traffic.value : el.duration.value;
+              timeMatrix[i][j] = Math.ceil(secs / 60);
+            }
+          });
+        });
+        return { matrix, timeMatrix, source: 'maps' };
+      }
+    } catch(err) {
+      console.warn('Google Maps fallback a OSM:', err);
+    }
+  }
+
+  // Fallback: geocodifica con OpenStreetMap e distanze in linea d'aria
+  const coords = await Promise.all(addresses.map(a => geocodeAddress(a)));
+
+  console.log('🗺️ Indirizzi da ottimizzare:', addresses);
+  console.log('📐 Coordinate trovate:', coords.map((c, i) => `${addresses[i]}: ${c ? `${c.lat.toFixed(4)},${c.lon.toFixed(4)}` : 'FALLITA'}`));
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i === j) continue;
+      if (coords[i] && coords[j]) {
+        const km = haversineCoords(coords[i], coords[j]);
+        matrix[i][j] = km;
+        timeMatrix[i][j] = Math.round((km * 1.4 / 40) * 60);
+      } else {
+        matrix[i][j] = 5;
+        timeMatrix[i][j] = 20;
+      }
+    }
+  }
+
+  console.log('📊 Matrice distanze (km):');
+  matrix.forEach((row, i) => console.log(`  ${addresses[i]?.substring(0,20)}: [${row.map(v => v.toFixed(1)).join(', ')}]`));
+
+  return { matrix, timeMatrix, source: 'osm' };
+}
+
+function haversine(addr1, addr2) {
+  return 5; // non più usata direttamente
+}
+
+// Converte "HH:MM" in minuti
+function timeToMinutes(t) {
+  if (!t) return 0;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Arrotonda al quarto d'ora superiore
+function roundUpToQuarter(minutes) {
+  return Math.ceil(minutes / 15) * 15;
+}
+
+// Aggiorna automaticamente le sedute fatte in base agli appuntamenti passati
+async function syncSeduteFromPlan() {
+  if (!plan) return;
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  // Conta le sedute passate per paziente
+  const countMap = {};
+  for (const weekOffset of [0, 1]) {
+    const weekDates = getWeekDates(weekOffset);
+    const weekPlan = plan[weekOffset];
+    if (!weekPlan) continue;
+    for (const dayIdx of [0,1,2,3,4,5]) {
+      const date = weekDates[dayIdx];
+      if (!date || date >= today) continue; // solo giorni passati
+      const appts = weekPlan[dayIdx] || [];
+      for (const appt of appts) {
+        countMap[appt.id] = (countMap[appt.id] || 0) + 1;
+      }
+    }
+  }
+
+  // Aggiorna sedutefatte per ogni paziente che ha appuntamenti passati
+  let changed = false;
+  patients = patients.map(p => {
+    const done = countMap[p.id] || 0;
+    if (done > 0 && done !== p.sedutefatte) {
+      changed = true;
+      return { ...p, sedutefatte: done };
+    }
+    return p;
+  });
+
+  if (changed) {
+    await dbSavePatients();
+    renderPatients();
+  }
+}
+let groups = JSON.parse(localStorage.getItem('giro_groups') || '[]');
+let activeGroupFilter = null;
+
+async function saveGroups() {
+  localStorage.setItem('giro_groups', JSON.stringify(groups));
+  try {
+    await sb.from('settings').upsert({ id: 'groups', data: groups, updated_at: new Date().toISOString() });
+  } catch(err) { console.warn('Supabase save groups error:', err); }
+}
+
+function addGroup() {
+  const name = document.getElementById('new-group-name').value.trim();
+  if (!name) { showToast('Inserisci il nome del gruppo'); return; }
+  if (groups.find(g => g.name === name)) { showToast('Gruppo già esistente'); return; }
+  groups.push({ id: Date.now().toString(), name });
+  saveGroups();
+  document.getElementById('new-group-name').value = '';
+  renderGroupsList();
+  renderGroupFilter();
+  updateGroupSelect();
+  showToast('Gruppo aggiunto');
+}
+
+function deleteGroup(id) {
+  groups = groups.filter(g => g.id !== id);
+  // Rimuovi il gruppo dai pazienti
+  patients = patients.map(p => p.gruppo === id ? { ...p, gruppo: null } : p);
+  saveGroups();
+  savePatients();
+  renderGroupsList();
+  renderGroupFilter();
+  updateGroupSelect();
+}
+
+function renderGroupsList() {
+  const list = document.getElementById('groups-list');
+  if (!list) return;
+  if (groups.length === 0) {
+    list.innerHTML = '<div style="font-size:13px;color:var(--text-muted)">Nessun gruppo ancora</div>';
+    return;
+  }
+  list.innerHTML = groups.map(g => {
+    const count = patients.filter(p => p.gruppo === g.id).length;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid var(--border)">
+      <div>
+        <span style="font-size:14px">${g.name}</span>
+        <span style="font-size:12px;color:var(--text-muted);margin-left:8px">${count} pazient${count === 1 ? 'e' : 'i'}</span>
+      </div>
+      <button class="btn btn-danger" style="padding:4px 10px;font-size:12px" onclick="deleteGroup('${g.id}')">Elimina</button>
+    </div>`;
+  }).join('');
+}
+
+function renderGroupFilter() {
+  const bar = document.getElementById('group-filter-bar');
+  if (!bar) return;
+  if (groups.length === 0) { bar.innerHTML = ''; return; }
+  bar.innerHTML = `
+    <button class="btn ${activeGroupFilter === null ? 'btn-primary' : ''}" style="font-size:13px;padding:5px 12px" onclick="setGroupFilter(null)">Tutti</button>
+    ${groups.map(g => `
+      <button class="btn ${activeGroupFilter === g.id ? 'btn-primary' : ''}" style="font-size:13px;padding:5px 12px" onclick="setGroupFilter('${g.id}')">${g.name}</button>
+    `).join('')}
+    <button class="btn ${activeGroupFilter === '__none__' ? 'btn-primary' : ''}" style="font-size:13px;padding:5px 12px" onclick="setGroupFilter('__none__')">Senza gruppo</button>
+  `;
+}
+
+function setGroupFilter(groupId) {
+  activeGroupFilter = groupId;
+  renderGroupFilter();
+  renderPatients();
+}
+
+function updateGroupSelect() {
+  const sel = document.getElementById('p-gruppo');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Nessun gruppo</option>' +
+    groups.map(g => `<option value="${g.id}" ${current === g.id ? 'selected' : ''}>${g.name}</option>`).join('');
+}
+let addressSearchTimeout = null;
+
+function onIndirizzoInput() {
+  const query = document.getElementById('p-indirizzo').value.trim();
+  clearTimeout(addressSearchTimeout);
+  if (query.length < 4) { hideAddressSuggestions(); return; }
+  // Aspetta 500ms che l'utente finisca di scrivere
+  addressSearchTimeout = setTimeout(() => searchAddress(query), 500);
+}
+
+async function searchAddress(query) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=it&addressdetails=1&featuretype=house`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'it' } });
+    const data = await res.json();
+    showAddressSuggestions(data);
+  } catch(err) {
+    hideAddressSuggestions();
+  }
+}
+
+function showAddressSuggestions(results) {
+  const box = document.getElementById('address-suggestions');
+  if (!results || results.length === 0) {
+    box.innerHTML = `<div class="suggestion-item" style="color:var(--text-muted);cursor:default">Nessun risultato trovato</div>`;
+    box.style.display = 'block';
+    return;
+  }
+  box.innerHTML = results.map(r => {
+    const addr = r.address || {};
+    const road = addr.road || addr.pedestrian || addr.footway || '';
+    const number = addr.house_number ? ' ' + addr.house_number : '';
+    const city = addr.city || addr.town || addr.village || addr.municipality || '';
+    const postcode = addr.postcode || '';
+    const province = addr.county || '';
+
+    const line1 = road ? `${road}${number}` : r.display_name.split(',')[0];
+    const line2 = [postcode, city, province].filter(Boolean).join(' ');
+    const full = [line1, city].filter(Boolean).join(', ');
+
+    return `<div class="suggestion-item" onmousedown="selectAddress('${full.replace(/'/g, "\\'")}')">
+      <div class="suggestion-main">${line1}</div>
+      ${line2 ? `<div class="suggestion-sub">${line2}</div>` : ''}
+    </div>`;
+  }).join('');
+  box.style.display = 'block';
+}
+
+function selectAddress(address) {
+  document.getElementById('p-indirizzo').value = address;
+  hideAddressSuggestions();
+}
+
+function hideAddressSuggestions() {
+  setTimeout(() => {
+    const box = document.getElementById('address-suggestions');
+    if (box) box.style.display = 'none';
+  }, 150);
+}
+
+function checkAutoSedute() {
+  const totali = document.getElementById('p-sedute-totali').value;
+  const inizio = document.getElementById('p-data-inizio').value;
+  const fine = document.getElementById('p-data-fine').value;
+
+  // Validazione date
+  if (inizio && fine && new Date(fine) <= new Date(inizio)) {
+    document.getElementById('p-data-fine').style.borderColor = 'var(--coral-400)';
+    document.getElementById('date-error').style.display = 'block';
+  } else {
+    document.getElementById('p-data-fine').style.borderColor = '';
+    document.getElementById('date-error').style.display = 'none';
+  }
+
+  // Greya solo il select delle sedute/settimana, non la durata
+  const isAuto = totali && inizio && fine && new Date(fine) > new Date(inizio);
+  const seduteSelect = document.getElementById('p-sedute');
+  const seduteLabel = seduteSelect.closest('.form-group');
+  const hint = document.getElementById('hint-sedute-auto');
+  if (isAuto) {
+    seduteLabel.style.opacity = '0.4';
+    seduteLabel.style.pointerEvents = 'none';
+    hint.style.display = 'block';
+  } else {
+    seduteLabel.style.opacity = '';
+    seduteLabel.style.pointerEvents = '';
+    hint.style.display = 'none';
+  }
+}
+
+// Controlla se un appuntamento che inizia a timeInMinutes si sovrappone a una fascia bloccata
+function isTimeBlocked(patient, dayIdx, timeInMinutes, durata) {
+  if (!patient?.orariBloccati) return false;
+  return patient.orariBloccati.some(b => {
+    if (b.day !== dayIdx) return false;
+    const slotStart = timeToMinutes(TIMES[b.time]);
+    // La fascia bloccata finisce all'inizio dello slot successivo nella griglia
+    const nextSlotTime = TIMES[b.time + 1] ? timeToMinutes(TIMES[b.time + 1]) : slotStart + 45;
+    const slotEnd = nextSlotTime;
+    // Sovrapposizione: l'appuntamento (timeInMinutes → timeInMinutes+durata) tocca la fascia bloccata
+    return timeInMinutes < slotEnd && timeInMinutes + (durata || 45) > slotStart;
+  });
+}
+
+// Assegna orari sequenziali rispettando il limite di fine giornata e gli orari bloccati
+function assignTimes(orderedAppts, travelMinutes, startHour = 13, endMinutes = 19 * 60, dayIdx = -1) {
+  let current = roundUpToQuarter(startHour * 60);
+  const result = [];
+  const leftover = [];
+  for (let i = 0; i < orderedAppts.length; i++) {
+    const a = orderedAppts[i];
+    const patient = dayIdx >= 0 ? patients.find(p => p.id === a.id) : null;
+
+    // Avanza finché l'orario non è bloccato per questo paziente
+    let attempts = 0;
+    while (patient && isTimeBlocked(patient, dayIdx, current, a.durata) && attempts < 20) {
+      current += 15;
+      attempts++;
+    }
+
+    if (current + a.durata > endMinutes) {
+      // Non entra in questo giorno entro l'orario di lavoro: NON la scartiamo,
+      // la segnaliamo come "leftover" così può essere ripiazzata su un altro giorno
+      // (le sedute non devono mai andare perse).
+      leftover.push(a);
+      continue;
+    }
+    const hh = String(Math.floor(current / 60)).padStart(2, '0');
+    const mm = String(current % 60).padStart(2, '0');
+    result.push({ ...a, time: `${hh}:${mm}` });
+    current += a.durata;
+    if (i < orderedAppts.length - 1) {
+      current += roundUpToQuarter(travelMinutes[i] || 20);
+    }
+    current = roundUpToQuarter(current);
+  }
+  result.leftover = leftover;
+  return result;
+}
+
+async function recalcDayKm(week, day) {
+  const appts = plan[week][day];
+  if (!appts || appts.length === 0) return;
+
+  const weeklyHours = settings.weeklyHours || DEFAULT_HOURS;
+  const dayHours = weeklyHours[day] || { start: '13:00', end: '19:00' };
+  const startMins = timeToMinutes(dayHours.start);
+  const endMins = timeToMinutes(dayHours.end);
+
+  // Caso singolo paziente
+  if (appts.length === 1) {
+    const singleRes = assignTimes(appts, [], startMins / 60, endMins, day);
+    plan[week][day] = singleRes;
+    return singleRes.leftover || [];
+  }
+
+  const apiKey = settings.gmapKey;
+  const base = settings.baseAddress || '';
+  const addresses = [base, ...appts.map(a => a.addr)].filter(Boolean);
+
+  const { matrix, timeMatrix, source } = await buildDistanceMatrix(addresses, apiKey);
+
+  const route = nearestNeighborTSP(matrix, 0, addresses);
+  const patientIndices = route.filter(r => r > 0).map(r => r - 1);
+  let reordered = patientIndices.map(pi => appts[pi]).filter(Boolean);
+
+  // Calcola i tempi di spostamento per un dato ordine
+  function getTravelMins(order) {
+    const mins = [];
+    const firstIdx = appts.indexOf(order[0]) + 1;
+    mins.push(timeMatrix ? timeMatrix[0][firstIdx] : 20);
+    for (let i = 0; i < order.length - 1; i++) {
+      const fromIdx = appts.indexOf(order[i]) + 1;
+      const toIdx = appts.indexOf(order[i+1]) + 1;
+      mins.push(timeMatrix ? timeMatrix[fromIdx][toIdx] : 20);
+    }
+    return mins;
+  }
+
+  // Calcola il buco massimo reale (differenza tra arrotondamento e tempo reale)
+  function calcMaxGap(order, tMins) {
+    let maxG = 0;
+    for (let i = 0; i < order.length - 1; i++) {
+      const travel = tMins[i + 1] || 20;
+      const gap = roundUpToQuarter(travel) - travel;
+      maxG = Math.max(maxG, gap);
+    }
+    return maxG;
+  }
+
+  let travelMins = getTravelMins(reordered);
+
+  // Prova a ridurre i buchi scambiando coppie di pazienti (max 3 passaggi)
+  for (let pass = 0; pass < 3; pass++) {
+    let improved = false;
+    for (let i = 0; i < reordered.length - 1; i++) {
+      const swapped = [...reordered];
+      [swapped[i], swapped[i+1]] = [swapped[i+1], swapped[i]];
+      const swappedTravel = getTravelMins(swapped);
+      const currentGap = calcMaxGap(reordered, travelMins);
+      const swappedGap = calcMaxGap(swapped, swappedTravel);
+      if (swappedGap < currentGap) {
+        reordered = swapped;
+        travelMins = swappedTravel;
+        improved = true;
+      }
+    }
+    if (!improved) break;
+  }
+
+  // Separa pazienti vincolati da quelli liberi
+  const dayHoursForSort = weeklyHours[day] || { start: '13:00', end: '19:00' };
+  const totalSlots = TIMES.filter(t => {
+    const tm = timeToMinutes(t);
+    return tm >= timeToMinutes(dayHoursForSort.start) && tm < timeToMinutes(dayHoursForSort.end);
+  }).length;
+
+  function countSlots(appt) {
+    const pat = patients.find(p => p.id === appt.id);
+    return TIMES.filter(t => {
+      const tm = timeToMinutes(t);
+      if (tm < timeToMinutes(dayHoursForSort.start) || tm >= timeToMinutes(dayHoursForSort.end)) return false;
+      const blocked = pat?.orariBloccati?.filter(o => o.day === day) || [];
+      return !blocked.some(b => TIMES[b.time] === t);
+    }).length;
+  }
+
+  const constrained = appts.filter(a => countSlots(a) < totalSlots * 0.6);
+  const free = appts.filter(a => countSlots(a) >= totalSlots * 0.6);
+
+  // Ordina i vincolati dal più vincolato
+  constrained.sort((a, b) => countSlots(a) - countSlots(b));
+
+  // Applica nearest neighbor sui pazienti liberi, continuando il giro da dove
+  // finisce l'ultimo paziente vincolato (se ce n'è uno), non ripartendo sempre
+  // dalla base. Così un paziente "libero" vicino all'ultimo vincolato viene
+  // visitato subito dopo, invece di essere trattato come se si ripartisse da zero.
+  let freeOrdered = free;
+  if (free.length > 1) {
+    const startAddr = constrained.length > 0
+      ? constrained[constrained.length - 1].addr
+      : addresses[0];
+    // Costruisci indici nella matrice completa per i pazienti liberi
+    const freeAddresses = [startAddr, ...free.map(a => a.addr)]; // punto di partenza + liberi
+    const freeCoords = freeAddresses.map(addr => addresses.indexOf(addr));
+    const subMatrix = freeCoords.map(fi => freeCoords.map(fj => (matrix[fi] && matrix[fj]) ? matrix[fi][fj] : 99));
+    const subRoute = nearestNeighborTSP(subMatrix, 0);
+    freeOrdered = subRoute.filter(i => i > 0).map(i => free[i - 1]).filter(Boolean);
+  }
+
+  reordered = [...constrained, ...freeOrdered];
+  travelMins = getTravelMins(reordered);
+
+  let totalKm = 0;
+  for (let i = 0; i < route.length - 1; i++) {
+    totalKm += matrix[route[i]][route[i+1]];
+  }
+
+  const withTimes = assignTimes(reordered, travelMins, startMins / 60, endMins, day);
+  if (withTimes.length > 0) withTimes[0].km = parseFloat(totalKm.toFixed(1));
+  withTimes.forEach(a => {
+    a.mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(a.addr)}`;
+    if (source === 'estimate') a._estimated = true;
+  });
+
+  plan[week][day] = withTimes;
+  return withTimes.leftover || [];
+}
+
+async function generatePlan() {
+  if (patients.length === 0) {
+    showToast('Aggiungi prima qualche paziente');
+    return;
+  }
+
+  const btn = document.querySelector('.btn[onclick="generatePlan()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generazione…'; }
+  showToast('Ottimizzazione percorso in corso…', 4000);
+
+  const weekPlan = [{}, {}];
+
+  for (const week of [0, 1]) {
+    // Filtra pazienti attivi (rispetta date e sedute rimanenti)
+    const today = new Date();
+    const activePatientsBase = patients.filter(p => {
+      if (p.dataInizio && new Date(p.dataInizio) > today) return false;
+      if (p.sediatotali && (p.sedutefatte || 0) >= p.sediatotali) return false;
+      return true;
+    });
+
+    const distribuzione = settings.distribuzione || 'distribuisci';
+    const weekDates = getWeekDates(week);
+
+    // Determina giorni attivi per questa settimana (escludi eccezioni)
+    const weeklyHours = settings.weeklyHours || DEFAULT_HOURS;
+    const exceptions = weeklyExceptions[week] || [];
+    const activeDays = [0,1,2,3,4,5].filter(d => weeklyHours[d]?.active && !exceptions.includes(d));
+
+    // Se preferenza "accorpa": riempi i primi giorni disponibili al massimo
+    // Se "distribuisci": bilancia il carico tra tutti i giorni attivi
+    // Se "nessun-giorno-libero": distribuisci ma garantisci almeno 1 paziente per giorno
+    // Il limite per giorno è sempre basato sugli orari reali (non un limite fisso)
+
+    const sedutePool = activePatientsBase.map(p => {
+      const seduteRimanenti = p.sediatotali ? p.sediatotali - (p.sedutefatte||0) : null;
+
+      let seduteQuesta;
+
+      if (p.sediatotali && p.dataInizio && p.dataFine) {
+        // Modalità automatica: calcola quante sedute fare questa settimana
+        // in base alle sedute rimanenti e alle settimane rimanenti
+        const fine = new Date(p.dataFine);
+        const inizio = new Date(p.dataInizio);
+        const oggiOInizio = today > inizio ? today : inizio;
+        const giorniRimanenti = Math.ceil((fine - oggiOInizio) / (1000*60*60*24));
+        const settimaneRimanenti = Math.max(1, giorniRimanenti / 7);
+        const rimanenti = Math.max(0, seduteRimanenti ?? p.sedute);
+
+        // Distribuisci uniformemente: alcune settimane avranno ceil, altre floor
+        const mediaPerSettimana = rimanenti / settimaneRimanenti;
+        // Questa settimana (week=0) prende ceil, la successiva floor o ceil a seconda
+        seduteQuesta = week === 0
+          ? Math.ceil(mediaPerSettimana)
+          : Math.floor(mediaPerSettimana + (mediaPerSettimana % 1 >= 0.5 ? 0 : 0));
+        seduteQuesta = Math.min(rimanenti, Math.max(0, seduteQuesta));
+      } else if (p.sediatotali) {
+        // Ha sedute totali ma non le date: usa sedute/settimana come limite
+        const rimanenti = Math.max(0, seduteRimanenti ?? p.sedute);
+        seduteQuesta = Math.min(p.sedute, rimanenti);
+      } else {
+        // Modalità classica: usa semplicemente sedute/settimana
+        seduteQuesta = p.sedute;
+      }
+
+      return { patient: p, remaining: Math.max(0, seduteQuesta) };
+    }).filter(s => s.remaining > 0);
+
+    // Calcola il massimo pazienti per giorno basandosi sugli orari effettivi
+    function maxPatientsForDay(dayIdx) {
+      const h = weeklyHours[dayIdx] || { start: '13:00', end: '19:00' };
+      const available = timeToMinutes(h.end) - timeToMinutes(h.start);
+      const avgDurata = activePatientsBase.length > 0
+        ? activePatientsBase.reduce((s, p) => s + p.durata, 0) / activePatientsBase.length
+        : 45;
+      const avgTravel = 20;
+      return Math.max(1, Math.floor(available / (avgDurata + avgTravel)));
+    }
+
+    const days = {};
+    [0,1,2,3,4,5].forEach(d => days[d] = []);
+
+    // Minuti già impegnati per ciascun giorno (durata sedute + spostamento stimato):
+    // usato per non sovraccaricare un giorno oltre la sua reale capienza oraria.
+    const dayMinutesUsed = {};
+    activeDays.forEach(d => dayMinutesUsed[d] = 0);
+    const AVG_TRAVEL_ESTIMATE = 20;
+
+    // Conta quante fasce orarie disponibili ha un paziente in un giorno
+    function availableSlots(pat, d) {
+      const blocked = pat.orariBloccati?.filter(o => o.day === d) || [];
+      const blockedTimes = blocked.map(b => TIMES[b.time]).filter(Boolean);
+      const dayH = weeklyHours[d] || { start: '13:00', end: '19:00' };
+      return TIMES.filter(t => {
+        const tm = timeToMinutes(t);
+        return tm >= timeToMinutes(dayH.start) && tm < timeToMinutes(dayH.end) && !blockedTimes.includes(t);
+      }).length;
+    }
+
+    // Per ogni seduta da piazzare, inserisci nel giorno attivo con MENO appuntamenti
+    const allSlots = [];
+    for (const s of sedutePool) {
+      for (let n = 0; n < s.remaining; n++) {
+        allSlots.push(s.patient);
+      }
+    }
+
+    // Ordina per numero di vincoli DECRESCENTE: i pazienti più vincolati vengono piazzati prima
+    allSlots.sort((a, b) => {
+      const slotsA = activeDays.reduce((tot, d) => tot + (availableSlots(a, d) > 0 ? 1 : 0), 0);
+      const slotsB = activeDays.reduce((tot, d) => tot + (availableSlots(b, d) > 0 ? 1 : 0), 0);
+      return slotsA - slotsB;
+    });
+
+    for (const patient of allSlots) {
+      const alreadyAssignedDays = activeDays.filter(d => days[d].some(a => a.id === patient.id));
+
+      // Trova i giorni eleggibili — senza limite fisso di capienza
+      const eligible = activeDays.filter(d => {
+        if (days[d].some(a => a.id === patient.id)) return false;
+        if (availableSlots(patient, d) === 0) return false;
+        if (patient.dataFine) {
+          const dayDate = weekDates[d] || new Date();
+          if (dayDate > new Date(patient.dataFine)) return false;
+        }
+        return true;
+      });
+      if (eligible.length === 0) continue;
+
+      function dayScore(d) {
+        let score = days[d].length * 10;
+        // Penalizza i giorni già più carichi in termini di minuti reali (durata + spostamento),
+        // così l'assegnazione iniziale rispetta meglio la capienza reale del giorno.
+        score += (dayMinutesUsed[d] || 0) * 0.3;
+        for (const ad of alreadyAssignedDays) {
+          const gap = Math.abs(d - ad);
+          if (gap === 0) score += 1000;
+          else if (gap === 1) score += 50;
+          else if (gap === 2) score += 10;
+        }
+        return score;
+      }
+
+      const targetDay = eligible.reduce((best, d) => dayScore(d) < dayScore(best) ? d : best, eligible[0]);
+
+      days[targetDay].push({
+        id: patient.id,
+        name: patient.nome + ' ' + patient.cognome,
+        addr: patient.indirizzo,
+        time: TIMES[0],
+        durata: patient.durata,
+        km: null,
+        mapsUrl: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(patient.indirizzo)}`
+      });
+      dayMinutesUsed[targetDay] = (dayMinutesUsed[targetDay] || 0) + patient.durata + AVG_TRAVEL_ESTIMATE;
+    }
+
+    // Secondo passaggio: forza le sedute ancora mancanti (es. paziente con 3 sedute e solo 2 giorni)
+    for (const s of sedutePool) {
+      const placed = activeDays.reduce((tot, d) => tot + days[d].filter(a => a.id === s.patient.id).length, 0);
+      const stillNeeded = s.remaining - placed;
+      for (let n = 0; n < stillNeeded; n++) {
+        // Prova giorni dove non è ancora presente
+        let eligible = activeDays.filter(d => {
+          if (days[d].some(a => a.id === s.patient.id)) return false;
+          if (availableSlots(s.patient, d) === 0) return false;
+          return true;
+        });
+        // Ultima risorsa: stesso giorno (max 2 sedute per giorno)
+        if (eligible.length === 0) {
+          eligible = activeDays.filter(d => {
+            if (availableSlots(s.patient, d) < 2) return false;
+            return days[d].filter(a => a.id === s.patient.id).length < 2;
+          });
+        }
+        // Ultimissima risorsa: la seduta NON deve mai andare persa. Se nessun giorno
+        // rispetta i vincoli sopra, la piazziamo comunque nel giorno attivo meno carico,
+        // anche a costo di più sedute nello stesso giorno o di ignorare una fascia
+        // bloccata (il ricalcolo orari/tempi successivo proverà comunque a rispettarla
+        // dove possibile, e la seduta resterà comunque visibile e segnalata).
+        if (eligible.length === 0 && activeDays.length > 0) {
+          eligible = activeDays.slice();
+        }
+        if (eligible.length === 0) continue;
+        const targetDay = eligible.reduce((best, d) => (dayMinutesUsed[d]||0) < (dayMinutesUsed[best]||0) ? d : best, eligible[0]);
+        days[targetDay].push({
+          id: s.patient.id,
+          name: s.patient.nome + ' ' + s.patient.cognome,
+          addr: s.patient.indirizzo,
+          time: TIMES[0],
+          durata: s.patient.durata,
+          km: null,
+          mapsUrl: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.patient.indirizzo)}`
+        });
+        dayMinutesUsed[targetDay] = (dayMinutesUsed[targetDay] || 0) + s.patient.durata + AVG_TRAVEL_ESTIMATE;
+      }
+    }
+
+    // "Nessun giorno libero": per ogni giorno attivo ancora vuoto,
+    // sposta un appuntamento dal giorno più carico
+    if (distribuzione === 'nessun-giorno-libero') {
+      for (const emptyDay of activeDays) {
+        if (days[emptyDay].length > 0) continue;
+        // Trova il giorno con più appuntamenti
+        const busiest = activeDays
+          .filter(d => d !== emptyDay && days[d].length > 1)
+          .sort((a, b) => days[b].length - days[a].length)[0];
+        if (busiest === undefined) continue;
+        // Sposta l'ultimo appuntamento del giorno più carico al giorno vuoto
+        const moved = days[busiest].pop();
+        // Riassegna orario al primo slot libero del giorno vuoto
+        const blocked = patients.find(p => p.id === moved.id)?.orariBloccati?.filter(o => o.day === emptyDay).map(o => TIMES[o.time]) || [];
+        const newTime = TIMES.find(t => !blocked.includes(t)) || TIMES[0];
+        moved.time = newTime;
+        moved.km = null;
+        days[emptyDay].push(moved);
+      }
+    }
+
+    // Prima assegna, poi ottimizza orari e percorso
+    weekPlan[week] = days;
+    plan = weekPlan;
+
+    let allLeftover = [];
+    for (const d of activeDays) {
+      if (days[d].length >= 1) {
+        const leftover = await recalcDayKm(week, d);
+        if (leftover && leftover.length) allLeftover = allLeftover.concat(leftover);
+      }
+    }
+
+    // RETE DI SICUREZZA: alcune sedute potrebbero non essere entrate nell'orario
+    // di lavoro del giorno assegnato (giorno troppo pieno). Non vengono mai perse:
+    // si prova a ripiazzarle su un altro giorno attivo con spazio libero.
+    let safetyLoops = 0;
+    while (allLeftover.length > 0 && safetyLoops < 100) {
+      safetyLoops++;
+      const appt = allLeftover.shift();
+
+      let candidates = activeDays
+        .filter(d => plan[week][d] && !plan[week][d].some(a => a.id === appt.id))
+        .sort((d1, d2) => (dayMinutesUsed[d1] || 0) - (dayMinutesUsed[d2] || 0));
+      if (candidates.length === 0) {
+        candidates = activeDays.slice().sort((d1, d2) =>
+          (plan[week][d1]?.length || 0) - (plan[week][d2]?.length || 0));
+      }
+
+      let placed = false;
+      for (const d of candidates) {
+        plan[week][d] = plan[week][d] || [];
+        plan[week][d].push({ ...appt });
+        const leftover2 = (await recalcDayKm(week, d)) || [];
+        const stillOut = leftover2.some(l => l.id === appt.id);
+        // Se il ricalcolo di questo giorno ha spinto fuori un'ALTRA seduta
+        // (di un altro paziente) per fare spazio, quella seduta va rimessa
+        // in coda: non deve mai sparire silenziosamente.
+        const displaced = leftover2.filter(l => l.id !== appt.id);
+        if (displaced.length) allLeftover = allLeftover.concat(displaced);
+
+        if (stillOut) {
+          // Non entra nemmeno qui: annulla il tentativo e prova il giorno successivo
+          plan[week][d] = plan[week][d].filter(a => a.id !== appt.id);
+          await recalcDayKm(week, d);
+        } else {
+          dayMinutesUsed[d] = (dayMinutesUsed[d] || 0) + appt.durata + AVG_TRAVEL_ESTIMATE;
+          placed = true;
+          break;
+        }
+      }
+
+      if (!placed) {
+        // Ultima risorsa: la seduta va comunque fatta. La forziamo nel giorno
+        // meno carico anche oltre l'orario previsto, e avvisiamo l'utente,
+        // invece di farla scomparire silenziosamente dal piano.
+        const fallbackDay = candidates[0] ?? activeDays[0];
+        if (fallbackDay !== undefined) {
+          plan[week][fallbackDay] = plan[week][fallbackDay] || [];
+          plan[week][fallbackDay].push({ ...appt, time: appt.time || TIMES[TIMES.length - 1], _overflow: true });
+          plan[week][fallbackDay].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+          showToast(`Attenzione: seduta di ${appt.name} forzata oltre l'orario previsto (settimana ${week+1}, giorno troppo pieno)`, 6000);
+        }
+      }
+    }
+
+    // Se per qualche motivo il ciclo si è fermato (limite di sicurezza) con
+    // ancora sedute in coda, non le perdiamo: le forziamo comunque nel giorno
+    // meno carico invece di lasciarle fuori dal piano.
+    for (const appt of allLeftover) {
+      const fallbackDay = activeDays.slice().sort((d1, d2) =>
+        (plan[week][d1]?.length || 0) - (plan[week][d2]?.length || 0))[0];
+      if (fallbackDay !== undefined) {
+        plan[week][fallbackDay] = plan[week][fallbackDay] || [];
+        plan[week][fallbackDay].push({ ...appt, time: appt.time || TIMES[TIMES.length - 1], _overflow: true });
+        plan[week][fallbackDay].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+        showToast(`Attenzione: seduta di ${appt.name} forzata oltre l'orario previsto (settimana ${week+1}, giorno troppo pieno)`, 6000);
+      }
+    }
+
+    // Riordino cronologico di sicurezza: qualunque cosa sia successo sopra,
+    // ogni giorno deve sempre mostrare le sedute in ordine di orario crescente.
+    for (const d of activeDays) {
+      if (plan[week][d]) {
+        plan[week][d].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+      }
+    }
+
+    weekPlan[week] = plan[week]; // riprendi i dati aggiornati da recalcDayKm
+  }
+
+  plan = weekPlan;
+  plan.generatedAt = Date.now();
+  localStorage.setItem('giro_plan', JSON.stringify(plan));
+  await dbSavePlan();
+  document.getElementById('btn-send-cal').disabled = false;
+  if (btn) { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Genera piano`; }
+  renderWeekGrid();
+
+  const hasApiKey = !!settings.gmapKey;
+  showToast(hasApiKey ? 'Piano ottimizzato con Google Maps!' : 'Piano ottimizzato con coordinate reali (OSM)', 3500);
+}
+
+function sendToCalendar() {
+  const apiKey = settings.gmapKey;
+  if (!apiKey) {
+    showToast('Configura prima la chiave API Google nelle impostazioni');
+    showView('impostazioni');
+    return;
+  }
+  openConfirm(
+    'Invia a Google Calendar',
+    'Gli appuntamenti verranno creati (o aggiornati) nel calendario Google. Proseguire?',
+    () => {
+      showToast('Appuntamenti inviati al calendario! ✓', 3000);
+    }
+  );
+}
+
+// ── Settings ──────────────────────────────────────────────────────
+function checkPlanReminder() {
+  const now = new Date();
+  const isSunday = now.getDay() === 0;
+  if (isSunday) {
+    const banner = document.getElementById('plan-reminder');
+    if (banner) banner.style.display = 'flex';
+  }
+}
+
+function dismissReminder() {
+  const banner = document.getElementById('plan-reminder');
+  if (banner) banner.style.display = 'none';
+}
+
+function reminderAndGenerate() {
+  dismissReminder();
+  showView('pianificazione');
+  generatePlan();
+}
+
+function formatDateShort(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.getDate() + '/' + (d.getMonth()+1) + '/' + d.getFullYear();
+}
+
+const DAYS_FULL = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
+const DEFAULT_HOURS = [
+  { active: true, start: '13:00', end: '19:00' },
+  { active: true, start: '13:00', end: '19:00' },
+  { active: true, start: '13:00', end: '19:00' },
+  { active: true, start: '13:00', end: '19:00' },
+  { active: true, start: '13:00', end: '19:00' },
+  { active: false, start: '13:00', end: '19:00' },
+];
+
+function renderWeeklyHoursGrid() {
+  const grid = document.getElementById('weekly-hours-grid');
+  if (!grid) return;
+  const hours = settings.weeklyHours || DEFAULT_HOURS;
+  const distrib = settings.distribuzione || 'distribuisci';
+
+  grid.innerHTML = DAYS_FULL.map((day, i) => {
+    const h = hours[i] || DEFAULT_HOURS[i];
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:0.5px solid var(--border)">
+        <label style="display:flex;align-items:center;gap:6px;min-width:90px;cursor:pointer;margin:0;font-size:14px">
+          <input type="checkbox" id="day-active-${i}" ${h.active ? 'checked' : ''}
+            onchange="toggleDayRow(${i})" style="width:auto">
+          ${day}
+        </label>
+        <div id="day-row-${i}" style="display:flex;align-items:center;gap:6px;${h.active ? '' : 'opacity:0.35;pointer-events:none'}">
+          <input type="time" id="day-start-${i}" value="${h.start}"
+            style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
+          <span style="font-size:13px;color:var(--text-muted)">→</span>
+          <input type="time" id="day-end-${i}" value="${h.end}"
+            style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Ripristina preferenza distribuzione
+  const radio = document.querySelector(`input[name="distribuzione"][value="${distrib}"]`);
+  if (radio) radio.checked = true;
+}
+
+function toggleDayRow(i) {
+  const active = document.getElementById(`day-active-${i}`).checked;
+  const row = document.getElementById(`day-row-${i}`);
+  row.style.opacity = active ? '' : '0.35';
+  row.style.pointerEvents = active ? '' : 'none';
+}
+
+function saveWorkHours() {
+  const hours = DAYS_FULL.map((_, i) => ({
+    active: document.getElementById(`day-active-${i}`)?.checked || false,
+    start: document.getElementById(`day-start-${i}`)?.value || '13:00',
+    end: document.getElementById(`day-end-${i}`)?.value || '19:00',
+  }));
+  const distrib = document.querySelector('input[name="distribuzione"]:checked')?.value || 'distribuisci';
+  settings.weeklyHours = hours;
+  settings.distribuzione = distrib;
+  localStorage.setItem('giro_settings', JSON.stringify(settings));
+  dbSaveSettings();
+  showToast('Orari e preferenze salvati');
+}
+
+function loadSettings() {
+  settings = JSON.parse(localStorage.getItem('giro_settings') || '{}');
+  if (settings.gmapKey) {
+    document.getElementById('input-gmap-key').value = settings.gmapKey;
+    setStatus('maps', 'ok', 'Configurato');
+    setStatus('cal', 'warn', 'Login richiesto');
+  }
+  if (settings.baseAddress) {
+    document.getElementById('base-address').value = settings.baseAddress;
+  }
+  if (settings.arrivalSameAsDeparture) {
+    document.getElementById('arrival-same').checked = true;
+    document.getElementById('arrival-address').value = settings.baseAddress || '';
+    document.getElementById('arrival-address').disabled = true;
+    document.getElementById('arrival-address').style.opacity = '0.5';
+  } else if (settings.arrivalAddress) {
+    document.getElementById('arrival-address').value = settings.arrivalAddress;
+  }
+  renderWeeklyHoursGrid();
+}
+
+function saveApiKey() {
+  const key = document.getElementById('input-gmap-key').value.trim();
+  if (!key) { showToast('Inserisci la chiave API'); return; }
+  settings.gmapKey = key;
+  localStorage.setItem('giro_settings', JSON.stringify(settings));
+  dbSaveSettings();
+  setStatus('maps', 'ok', 'Configurato');
+  setStatus('cal', 'warn', 'Login richiesto');
+  showToast('Chiave API salvata');
+}
+
+function toggleArrivalSame() {
+  const same = document.getElementById('arrival-same').checked;
+  const arrivalInput = document.getElementById('arrival-address');
+  if (same) {
+    arrivalInput.value = document.getElementById('base-address').value;
+    arrivalInput.disabled = true;
+    arrivalInput.style.opacity = '0.5';
+  } else {
+    arrivalInput.disabled = false;
+    arrivalInput.style.opacity = '';
+  }
+}
+
+function saveBaseAddress() {
+  const base = document.getElementById('base-address').value.trim();
+  if (!base) { showToast('Inserisci l\'indirizzo di partenza'); return; }
+  const same = document.getElementById('arrival-same').checked;
+  const arrival = same ? base : document.getElementById('arrival-address').value.trim();
+  settings.baseAddress = base;
+  settings.arrivalAddress = arrival || base;
+  settings.arrivalSameAsDeparture = same;
+  localStorage.setItem('giro_settings', JSON.stringify(settings));
+  dbSaveSettings();
+  showToast('Indirizzi salvati');
+}
+
+function setStatus(which, state, text) {
+  document.getElementById(which + '-status-dot').className = 'status-dot ' + state;
+  document.getElementById(which + '-status-text').textContent = text;
+}
+
+// ── Google Calendar ───────────────────────────────────────────────
+const GOOGLE_CLIENT_ID = '154764760503-nct4d3dblqr65beu8tfv10opvktekev2.apps.googleusercontent.com';
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly';
+let googleAccessToken = null;
+let tokenClient = null;
+
+function updateGoogleButtons() {
+  const loginBtn = document.getElementById('btn-google-login');
+  const logoutBtn = document.getElementById('btn-google-logout');
+  if (!loginBtn || !logoutBtn) return;
+  if (googleAccessToken) {
+    loginBtn.textContent = '✓ Google connesso';
+    logoutBtn.style.display = 'inline-flex';
+  } else {
+    loginBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg> Accedi con Google`;
+    logoutBtn.style.display = 'none';
+  }
+}
+
+function logoutGoogle() {
+  if (googleAccessToken && window.google) {
+    google.accounts.oauth2.revoke(googleAccessToken, () => {
+      googleAccessToken = null;
+      setStatus('cal', 'warn', 'Login richiesto');
+      updateGoogleButtons();
+      showToast('Disconnesso da Google');
+    });
+  } else {
+    googleAccessToken = null;
+    setStatus('cal', 'warn', 'Login richiesto');
+    updateGoogleButtons();
+    showToast('Disconnesso da Google');
+  }
+}
+
+function initGoogleAuth() {
+  if (!window.google) return;
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: CALENDAR_SCOPE,
+    callback: (response) => {
+      if (response.error) {
+        showToast('Errore login Google: ' + response.error, 3000);
+        return;
+      }
+      googleAccessToken = response.access_token;
+      setStatus('cal', 'ok', 'Connesso');
+      updateGoogleButtons();
+      showToast('Google Calendar connesso!');
+    }
+  });
+}
+
+function connectGoogle() {
+  if (!window.google) {
+    showToast('Libreria Google non caricata, ricarica la pagina');
+    return;
+  }
+  if (!tokenClient) initGoogleAuth();
+  tokenClient.requestAccessToken();
+}
+
+let selectedCalendarId = 'primary';
+
+function sendToCalendar() {
+  if (!plan) { showToast('Genera prima il piano'); return; }
+  if (!googleAccessToken) {
+    showToast('⚠️ Token Google non presente — accedi di nuovo', 3000);
+    openConfirm(
+      'Accesso richiesto',
+      'Devi prima accedere con Google per inviare gli appuntamenti al calendario.',
+      () => connectGoogle()
+    );
+    return;
+  }
+  loadCalendarList();
+}
+
+async function loadCalendarList() {
+  showToast('Caricamento calendari...', 3000);
+  try {
+    const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+      headers: { 'Authorization': 'Bearer ' + googleAccessToken }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Errore ' + res.status);
+
+    const calendars = data.items?.filter(c => c.accessRole === 'owner' || c.accessRole === 'writer') || [];
+    if (calendars.length === 0) throw new Error('Nessun calendario trovato');
+
+    const list = document.getElementById('cal-list');
+    list.innerHTML = calendars.map(c => `
+      <label style="display:flex;align-items:center;gap:10px;padding:10px;border:0.5px solid var(--border);border-radius:10px;cursor:pointer;margin:0">
+        <input type="radio" name="cal-pick" value="${c.id}" ${c.primary ? 'checked' : ''} style="width:auto">
+        <span style="width:12px;height:12px;border-radius:50%;background:${c.backgroundColor || '#1D9E75'};flex-shrink:0"></span>
+        <span style="font-size:14px">${c.summary}</span>
+      </label>
+    `).join('');
+
+    selectedCalendarId = calendars.find(c => c.primary)?.id || calendars[0].id;
+    document.getElementById('cal-picker-overlay').classList.add('open');
+  } catch(err) {
+    showToast('❌ ' + (err.message || 'Errore sconosciuto'), 4000);
+    console.error('loadCalendarList error:', err);
+  }
+}
+
+function confirmSendToCalendar() {
+  const picked = document.querySelector('input[name="cal-pick"]:checked');
+  if (picked) selectedCalendarId = picked.value;
+  document.getElementById('cal-picker-overlay').classList.remove('open');
+  doSendToCalendar();
+}
+
+async function doSendToCalendar() {
+  const weeklyHours = settings.weeklyHours || DEFAULT_HOURS;
+  const activeDayIndices = [0,1,2,3,4,5].filter(d => weeklyHours[d]?.active);
+  let created = 0, errors = 0;
+
+  showToast('Invio in corso…', 10000);
+
+  for (const weekOffset of [0, 1]) {
+    const weekDates = getWeekDates(weekOffset);
+    const weekPlan = plan[weekOffset];
+    if (!weekPlan) continue;
+
+    for (const dayIdx of activeDayIndices) {
+      const appts = weekPlan[dayIdx] || [];
+      const date = weekDates[dayIdx];
+      if (!date || appts.length === 0) continue;
+
+      const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+
+      for (const appt of appts) {
+        try {
+          const [startH, startM] = appt.time.split(':').map(Number);
+          const endTotalMins = startH * 60 + startM + appt.durata;
+          const endH = Math.floor(endTotalMins / 60);
+          const endM = endTotalMins % 60;
+
+          const event = {
+            summary: `🏠 ${appt.name}`,
+            location: appt.addr,
+            description: `Fisioterapia domiciliare\nPaziente: ${appt.name}\nIndirizzo: ${appt.addr}${appt.mapsUrl ? '\n\nNaviga: ' + appt.mapsUrl : ''}`,
+            start: {
+              dateTime: `${dateStr}T${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}:00`,
+              timeZone: 'Europe/Rome'
+            },
+            end: {
+              dateTime: `${dateStr}T${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}:00`,
+              timeZone: 'Europe/Rome'
+            },
+            colorId: '2', // verde salvia
+            extendedProperties: {
+              private: {
+                giro_app: 'true',
+                patient_id: appt.id,
+                week_offset: String(weekOffset),
+                day_idx: String(dayIdx)
+              }
+            }
+          };
+
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(selectedCalendarId)}/events`, {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer ' + googleAccessToken,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(event)
+          });
+
+          if (res.ok) {
+            created++;
+          } else if (res.status === 401) {
+            // Token scaduto
+            googleAccessToken = null;
+            localStorage.removeItem('giro_google_token');
+            setStatus('cal', 'warn', 'Login richiesto');
+            showToast('Sessione Google scaduta, accedi di nuovo', 3000);
+            return;
+          } else {
+            errors++;
+            console.error('Errore creazione evento:', await res.text());
+          }
+        } catch(err) {
+          errors++;
+          console.error('Errore evento:', err);
+        }
+      }
+    }
+  }
+
+  if (errors === 0) {
+    showToast(`✓ ${created} appuntamenti inviati al calendario!`, 3500);
+  } else {
+    showToast(`${created} inviati, ${errors} errori — controlla la console`, 4000);
+  }
+}
+
+// ── Confirm dialog ─────────────────────────────────────────────────
+let confirmCallback = null;
+function openConfirm(title, msg, cb) {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-msg').textContent = msg;
+  confirmCallback = cb;
+  document.getElementById('confirm-modal-overlay').classList.add('open');
+  document.getElementById('confirm-ok-btn').onclick = () => {
+    closeConfirm();
+    if (confirmCallback) confirmCallback();
+  };
+}
+function closeConfirm() {
+  document.getElementById('confirm-modal-overlay').classList.remove('open');
+}
+
+// ── Init ───────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  // Inizializza Supabase
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // Carica dati da Supabase
+  await dbLoadAll();
+  renderPatients();
+  renderGroupFilter();
+  renderWeekGrid();
+  checkPlanReminder();
+  await syncSeduteFromPlan();
+
+  // Inizializza Google Auth
+  if (window.google) initGoogleAuth();
+  else {
+    const script = document.querySelector('script[src*="accounts.google.com"]');
+    if (script) script.addEventListener('load', initGoogleAuth);
+  }
+});
+</script>
+</body>
+</html>
