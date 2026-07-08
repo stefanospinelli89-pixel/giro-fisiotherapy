@@ -659,7 +659,7 @@
         <div class="page-subtitle">Rivedi e aggiusta il giro prima di inviarlo al calendario</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn" onclick="generatePlan()">
+        <button class="btn" onclick="generatePlan(currentWeekOffset)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
             <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
           </svg>
@@ -2201,27 +2201,74 @@ async function recalcDayKm(week, day) {
   const constrained = appts.filter(a => countSlots(a) < totalSlots * 0.6);
   const free = appts.filter(a => countSlots(a) >= totalSlots * 0.6);
 
-  // Ordina i vincolati dal più vincolato
-  constrained.sort((a, b) => countSlots(a) - countSlots(b));
-
-  // Applica nearest neighbor sui pazienti liberi, continuando il giro da dove
-  // finisce l'ultimo paziente vincolato (se ce n'è uno), non ripartendo sempre
-  // dalla base. Così un paziente "libero" vicino all'ultimo vincolato viene
-  // visitato subito dopo, invece di essere trattato come se si ripartisse da zero.
-  let freeOrdered = free;
-  if (free.length > 1) {
-    const startAddr = constrained.length > 0
-      ? constrained[constrained.length - 1].addr
-      : addresses[0];
-    // Costruisci indici nella matrice completa per i pazienti liberi
-    const freeAddresses = [startAddr, ...free.map(a => a.addr)]; // punto di partenza + liberi
-    const freeCoords = freeAddresses.map(addr => addresses.indexOf(addr));
-    const subMatrix = freeCoords.map(fi => freeCoords.map(fj => (matrix[fi] && matrix[fj]) ? matrix[fi][fj] : 99));
-    const subRoute = nearestNeighborTSP(subMatrix, 0);
-    freeOrdered = subRoute.filter(i => i > 0).map(i => free[i - 1]).filter(Boolean);
+  // Calcola il primo orario utile per un paziente vincolato (in minuti dall'inizio giornata)
+  function earliestAvailable(appt) {
+    const pat = patients.find(p => p.id === appt.id);
+    const blocked = pat?.orariBloccati?.filter(o => o.day === day) || [];
+    for (const t of TIMES) {
+      const tm = timeToMinutes(t);
+      if (tm < timeToMinutes(dayHoursForSort.start) || tm >= timeToMinutes(dayHoursForSort.end)) continue;
+      if (!blocked.some(b => TIMES[b.time] === t)) return tm;
+    }
+    return timeToMinutes(dayHoursForSort.start);
   }
 
-  reordered = [...constrained, ...freeOrdered];
+  // Ordina i vincolati per orario di disponibilità reale, non per quante fasce hanno
+  // libere: un paziente disponibile solo alle 18:00 va visto per ultimo, non per
+  // primo, altrimenti si crea un buco enorme e artificiale a inizio giornata.
+  constrained.sort((a, b) => earliestAvailable(a) - earliestAvailable(b));
+
+  function addrIdx(addr) { return addresses.indexOf(addr); }
+  function dist(addrA, addrB) {
+    const ia = addrIdx(addrA), ib = addrIdx(addrB);
+    return (matrix[ia] && matrix[ia][ib] !== undefined) ? matrix[ia][ib] : 99;
+  }
+  function travelTimeBetween(addrA, addrB) {
+    const ia = addrIdx(addrA), ib = addrIdx(addrB);
+    const raw = (timeMatrix && timeMatrix[ia] && timeMatrix[ia][ib] !== undefined) ? timeMatrix[ia][ib] : 20;
+    return roundUpToQuarter(raw);
+  }
+
+  // Costruisci il giro simulando il tempo che passa: prima di ogni vincolato,
+  // inserisci i liberi rimanenti più vicini geograficamente MA solo se c'è
+  // margine sufficiente perché il vincolato successivo non perda la propria
+  // fascia oraria. Così i buchi si riempiono senza sacrificare i vincoli.
+  let simTime = timeToMinutes(dayHoursForSort.start);
+  let lastAddr = addresses[0];
+  const usedFreeIds = new Set();
+  reordered = [];
+
+  for (let ci = 0; ci <= constrained.length; ci++) {
+    const cPatient = constrained[ci];
+    const deadline = cPatient ? earliestAvailable(cPatient) : Infinity;
+
+    // Riempi il margine prima di questo vincolato (o, nell'ultimo giro, fino
+    // a esaurimento) con i liberi rimasti più vicini che ci stanno in tempo.
+    while (true) {
+      const remainingFree = free.filter(f => !usedFreeIds.has(f.id));
+      if (remainingFree.length === 0) break;
+      const sortedByDist = remainingFree.slice().sort((a, b) => dist(lastAddr, a.addr) - dist(lastAddr, b.addr));
+      let chosen = null, chosenTravel = 0;
+      for (const f of sortedByDist) {
+        const travel = travelTimeBetween(lastAddr, f.addr);
+        const finish = simTime + travel + f.durata;
+        if (!cPatient || finish <= deadline) { chosen = f; chosenTravel = travel; break; }
+      }
+      if (!chosen) break; // nessun libero rimasto entra in questo margine
+      reordered.push(chosen);
+      usedFreeIds.add(chosen.id);
+      simTime += chosenTravel + chosen.durata;
+      lastAddr = chosen.addr;
+    }
+
+    if (cPatient) {
+      const travel = travelTimeBetween(lastAddr, cPatient.addr);
+      simTime = Math.max(simTime + travel, deadline) + cPatient.durata;
+      lastAddr = cPatient.addr;
+      reordered.push(cPatient);
+    }
+  }
+
   travelMins = getTravelMins(reordered);
 
   let totalKm = 0;
@@ -2236,23 +2283,44 @@ async function recalcDayKm(week, day) {
     if (source === 'estimate') a._estimated = true;
   });
 
+  // Rileva eventuali buchi orari residui superiori a 30 minuti (al netto dello
+  // spostamento): possono restare solo se davvero inevitabili per via delle
+  // fasce bloccate dei pazienti. Vengono segnalati, non nascosti.
+  const gapWarnings = [];
+  for (let i = 0; i < withTimes.length - 1; i++) {
+    const endPrev = timeToMinutes(withTimes[i].time) + withTimes[i].durata;
+    const startNext = timeToMinutes(withTimes[i + 1].time);
+    const travel = roundUpToQuarter(travelMins[i] || 20);
+    const idleGap = startNext - endPrev - travel;
+    if (idleGap > 30) {
+      gapWarnings.push({ day, after: withTimes[i].name, before: withTimes[i + 1].name, minutes: idleGap });
+    }
+  }
+  withTimes.gapWarnings = gapWarnings;
+
   plan[week][day] = withTimes;
   return withTimes.leftover || [];
 }
 
-async function generatePlan() {
+async function generatePlan(onlyWeek = null) {
   if (patients.length === 0) {
     showToast('Aggiungi prima qualche paziente');
     return;
   }
 
-  const btn = document.querySelector('.btn[onclick="generatePlan()"]');
+  const btn = document.querySelector('.btn[onclick*="generatePlan"]');
   if (btn) { btn.disabled = true; btn.textContent = 'Generazione…'; }
   showToast('Ottimizzazione percorso in corso…', 4000);
 
-  const weekPlan = [{}, {}];
+  // Se viene specificata una settimana (0 o 1), rigenera solo quella e lascia
+  // intatta l'altra; altrimenti (nessun argomento) rigenera entrambe.
+  const weeksToGenerate = (onlyWeek === 0 || onlyWeek === 1) ? [onlyWeek] : [0, 1];
+  const weekPlan = [
+    (plan && plan[0]) ? plan[0] : {},
+    (plan && plan[1]) ? plan[1] : {},
+  ];
 
-  for (const week of [0, 1]) {
+  for (const week of weeksToGenerate) {
     // Filtra pazienti attivi (rispetta date e sedute rimanenti)
     const today = new Date();
     const activePatientsBase = patients.filter(p => {
@@ -2546,6 +2614,20 @@ async function generatePlan() {
       }
     }
 
+    // Segnala (senza nasconderli) eventuali buchi orari residui superiori a 30
+    // minuti: possono restare solo se davvero inevitabili per via delle fasce
+    // bloccate dei pazienti coinvolti.
+    const weekGapWarnings = [];
+    for (const d of activeDays) {
+      if (plan[week][d] && plan[week][d].gapWarnings) {
+        weekGapWarnings.push(...plan[week][d].gapWarnings);
+      }
+    }
+    if (weekGapWarnings.length > 0) {
+      const giorniCoinvolti = [...new Set(weekGapWarnings.map(g => DAYS_FULL[g.day]?.substring(0, 3) || DAYS[g.day]))].join(', ');
+      showToast(`Attenzione: ${weekGapWarnings.length} buco/i orario/i oltre 30 min non evitabile/i per vincoli dei pazienti (settimana ${week+1}: ${giorniCoinvolti})`, 6000);
+    }
+
     weekPlan[week] = plan[week]; // riprendi i dati aggiornati da recalcDayKm
   }
 
@@ -2558,7 +2640,10 @@ async function generatePlan() {
   renderWeekGrid();
 
   const hasApiKey = !!settings.gmapKey;
-  showToast(hasApiKey ? 'Piano ottimizzato con Google Maps!' : 'Piano ottimizzato con coordinate reali (OSM)', 3500);
+  const weekLabel = weeksToGenerate.length === 1
+    ? (weeksToGenerate[0] === 0 ? 'settimana corrente' : 'settimana successiva')
+    : 'entrambe le settimane';
+  showToast(`Piano (${weekLabel}) ottimizzato con ${hasApiKey ? 'Google Maps' : 'coordinate reali (OSM)'}!`, 3500);
 }
 
 function sendToCalendar() {
