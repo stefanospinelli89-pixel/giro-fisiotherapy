@@ -1459,7 +1459,7 @@ async function moveAppt(week, fromDay, apptIdx, toDay) {
 
   // Simula l'inserimento per vedere se entra
   const testAppts = [...existingAppts, moved];
-  const testResult = assignTimes(testAppts, new Array(testAppts.length).fill(20), startMins / 60, endMins, toDay);
+  const testResult = assignTimes(testAppts, new Array(testAppts.length).fill(20), startMins / 60, endMins, toDay, dayHours.pauses || []);
   if (testResult.length < testAppts.length) {
     showToast(`❌ Non entra negli orari di ${DAYS_FULL[toDay]} (${dayHours.start}–${dayHours.end})`, 3500);
     return; // Non spostare — l'appuntamento rimane dove sta
@@ -2075,8 +2075,37 @@ function isTimeBlocked(patient, dayIdx, timeInMinutes, durata) {
   });
 }
 
-// Assegna orari sequenziali rispettando il limite di fine giornata e gli orari bloccati
-function assignTimes(orderedAppts, travelMinutes, startHour = 13, endMinutes = 19 * 60, dayIdx = -1) {
+// Verifica se un appuntamento (timeInMinutes → +durata) si sovrappone a una pausa
+// di lavoro del giorno (es. pausa pranzo). Le pause sono intervalli continui
+// {start,end} in formato 'HH:MM', indipendenti dalla griglia TIMES.
+function isWithinPause(pauses, timeInMinutes, durata) {
+  if (!pauses || pauses.length === 0) return false;
+  return pauses.some(p => {
+    const ps = timeToMinutes(p.start), pe = timeToMinutes(p.end);
+    return timeInMinutes < pe && timeInMinutes + (durata || 45) > ps;
+  });
+}
+
+// Trova, se esiste, la pausa che si sovrappone a un dato istante+durata
+function findOverlappingPause(pauses, timeInMinutes, durata) {
+  if (!pauses || pauses.length === 0) return null;
+  return pauses.find(p => {
+    const ps = timeToMinutes(p.start), pe = timeToMinutes(p.end);
+    return timeInMinutes < pe && timeInMinutes + (durata || 45) > ps;
+  }) || null;
+}
+
+// Verifica se uno specifico slot della griglia TIMES cade dentro una pausa
+// (usato per calcolare quante fasce sono realmente disponibili in un giorno)
+function isTimeSlotInPause(pauses, timeStr) {
+  if (!pauses || pauses.length === 0) return false;
+  const tm = timeToMinutes(timeStr);
+  return pauses.some(p => tm >= timeToMinutes(p.start) && tm < timeToMinutes(p.end));
+}
+
+// Assegna orari sequenziali rispettando il limite di fine giornata, gli orari
+// bloccati dei pazienti e le pause di lavoro (es. pausa pranzo).
+function assignTimes(orderedAppts, travelMinutes, startHour = 13, endMinutes = 19 * 60, dayIdx = -1, pauses = []) {
   let current = roundUpToQuarter(startHour * 60);
   const result = [];
   const leftover = [];
@@ -2084,11 +2113,22 @@ function assignTimes(orderedAppts, travelMinutes, startHour = 13, endMinutes = 1
     const a = orderedAppts[i];
     const patient = dayIdx >= 0 ? patients.find(p => p.id === a.id) : null;
 
-    // Avanza finché l'orario non è bloccato per questo paziente
+    // Avanza finché l'orario non è bloccato per questo paziente né dentro una pausa
     let attempts = 0;
-    while (patient && isTimeBlocked(patient, dayIdx, current, a.durata) && attempts < 20) {
-      current += 15;
-      attempts++;
+    while (attempts < 40) {
+      if (patient && isTimeBlocked(patient, dayIdx, current, a.durata)) {
+        current += 15;
+        attempts++;
+        continue;
+      }
+      const pause = findOverlappingPause(pauses, current, a.durata);
+      if (pause) {
+        // Salta direttamente alla fine della pausa, non serve avanzare a scatti
+        current = roundUpToQuarter(timeToMinutes(pause.end));
+        attempts++;
+        continue;
+      }
+      break;
     }
 
     if (current + a.durata > endMinutes) {
@@ -2116,13 +2156,14 @@ async function recalcDayKm(week, day) {
   if (!appts || appts.length === 0) return;
 
   const weeklyHours = settings.weeklyHours || DEFAULT_HOURS;
-  const dayHours = weeklyHours[day] || { start: '13:00', end: '19:00' };
+  const dayHours = weeklyHours[day] || { start: '13:00', end: '19:00', pauses: [] };
   const startMins = timeToMinutes(dayHours.start);
   const endMins = timeToMinutes(dayHours.end);
+  const dayPauses = dayHours.pauses || [];
 
   // Caso singolo paziente
   if (appts.length === 1) {
-    const singleRes = assignTimes(appts, [], startMins / 60, endMins, day);
+    const singleRes = assignTimes(appts, [], startMins / 60, endMins, day, dayPauses);
     plan[week][day] = singleRes;
     return singleRes.leftover || [];
   }
@@ -2182,10 +2223,11 @@ async function recalcDayKm(week, day) {
   }
 
   // Separa pazienti vincolati da quelli liberi
-  const dayHoursForSort = weeklyHours[day] || { start: '13:00', end: '19:00' };
+  const dayHoursForSort = weeklyHours[day] || { start: '13:00', end: '19:00', pauses: [] };
   const totalSlots = TIMES.filter(t => {
     const tm = timeToMinutes(t);
-    return tm >= timeToMinutes(dayHoursForSort.start) && tm < timeToMinutes(dayHoursForSort.end);
+    return tm >= timeToMinutes(dayHoursForSort.start) && tm < timeToMinutes(dayHoursForSort.end)
+      && !isTimeSlotInPause(dayPauses, t);
   }).length;
 
   function countSlots(appt) {
@@ -2193,6 +2235,7 @@ async function recalcDayKm(week, day) {
     return TIMES.filter(t => {
       const tm = timeToMinutes(t);
       if (tm < timeToMinutes(dayHoursForSort.start) || tm >= timeToMinutes(dayHoursForSort.end)) return false;
+      if (isTimeSlotInPause(dayPauses, t)) return false;
       const blocked = pat?.orariBloccati?.filter(o => o.day === day) || [];
       return !blocked.some(b => TIMES[b.time] === t);
     }).length;
@@ -2208,6 +2251,7 @@ async function recalcDayKm(week, day) {
     for (const t of TIMES) {
       const tm = timeToMinutes(t);
       if (tm < timeToMinutes(dayHoursForSort.start) || tm >= timeToMinutes(dayHoursForSort.end)) continue;
+      if (isTimeSlotInPause(dayPauses, t)) continue;
       if (!blocked.some(b => TIMES[b.time] === t)) return tm;
     }
     return timeToMinutes(dayHoursForSort.start);
@@ -2228,11 +2272,23 @@ async function recalcDayKm(week, day) {
     const raw = (timeMatrix && timeMatrix[ia] && timeMatrix[ia][ib] !== undefined) ? timeMatrix[ia][ib] : 20;
     return roundUpToQuarter(raw);
   }
+  // Se una visita di 'durata' minuti a partire da 'startTime' cade dentro una
+  // pausa di lavoro, sposta l'inizio alla fine della pausa (come farà poi assignTimes)
+  function skipPauses(startTime, durata) {
+    let t = startTime, moved = true;
+    while (moved) {
+      moved = false;
+      const p = findOverlappingPause(dayPauses, t, durata);
+      if (p) { t = timeToMinutes(p.end); moved = true; }
+    }
+    return t;
+  }
 
-  // Costruisci il giro simulando il tempo che passa: prima di ogni vincolato,
-  // inserisci i liberi rimanenti più vicini geograficamente MA solo se c'è
-  // margine sufficiente perché il vincolato successivo non perda la propria
-  // fascia oraria. Così i buchi si riempiono senza sacrificare i vincoli.
+  // Costruisci il giro simulando il tempo che passa (comprese le pause): prima
+  // di ogni vincolato, inserisci i liberi rimanenti più vicini geograficamente
+  // MA solo se c'è margine sufficiente perché il vincolato successivo non
+  // perda la propria fascia oraria. Così i buchi si riempiono senza sacrificare
+  // i vincoli né sovrapporsi alle pause programmate.
   let simTime = timeToMinutes(dayHoursForSort.start);
   let lastAddr = addresses[0];
   const usedFreeIds = new Set();
@@ -2248,22 +2304,24 @@ async function recalcDayKm(week, day) {
       const remainingFree = free.filter(f => !usedFreeIds.has(f.id));
       if (remainingFree.length === 0) break;
       const sortedByDist = remainingFree.slice().sort((a, b) => dist(lastAddr, a.addr) - dist(lastAddr, b.addr));
-      let chosen = null, chosenTravel = 0;
+      let chosen = null, chosenArrival = 0;
       for (const f of sortedByDist) {
         const travel = travelTimeBetween(lastAddr, f.addr);
-        const finish = simTime + travel + f.durata;
-        if (!cPatient || finish <= deadline) { chosen = f; chosenTravel = travel; break; }
+        const arrival = skipPauses(simTime + travel, f.durata);
+        const finish = arrival + f.durata;
+        if (!cPatient || finish <= deadline) { chosen = f; chosenArrival = arrival; break; }
       }
       if (!chosen) break; // nessun libero rimasto entra in questo margine
       reordered.push(chosen);
       usedFreeIds.add(chosen.id);
-      simTime += chosenTravel + chosen.durata;
+      simTime = chosenArrival + chosen.durata;
       lastAddr = chosen.addr;
     }
 
     if (cPatient) {
       const travel = travelTimeBetween(lastAddr, cPatient.addr);
-      simTime = Math.max(simTime + travel, deadline) + cPatient.durata;
+      const arrival = skipPauses(Math.max(simTime + travel, deadline), cPatient.durata);
+      simTime = arrival + cPatient.durata;
       lastAddr = cPatient.addr;
       reordered.push(cPatient);
     }
@@ -2276,7 +2334,7 @@ async function recalcDayKm(week, day) {
     totalKm += matrix[route[i]][route[i+1]];
   }
 
-  const withTimes = assignTimes(reordered, travelMins, startMins / 60, endMins, day);
+  const withTimes = assignTimes(reordered, travelMins, startMins / 60, endMins, day, dayPauses);
   if (withTimes.length > 0) withTimes[0].km = parseFloat(totalKm.toFixed(1));
   withTimes.forEach(a => {
     a.mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(a.addr)}`;
@@ -2284,14 +2342,21 @@ async function recalcDayKm(week, day) {
   });
 
   // Rileva eventuali buchi orari residui superiori a 30 minuti (al netto dello
-  // spostamento): possono restare solo se davvero inevitabili per via delle
-  // fasce bloccate dei pazienti. Vengono segnalati, non nascosti.
+  // spostamento e delle pause di lavoro programmate, es. pausa pranzo):
+  // possono restare solo se davvero inevitabili per via delle fasce bloccate
+  // dei pazienti. Vengono segnalati, non nascosti.
   const gapWarnings = [];
   for (let i = 0; i < withTimes.length - 1; i++) {
     const endPrev = timeToMinutes(withTimes[i].time) + withTimes[i].durata;
     const startNext = timeToMinutes(withTimes[i + 1].time);
     const travel = roundUpToQuarter(travelMins[i] || 20);
-    const idleGap = startNext - endPrev - travel;
+    // Il tempo che ricade dentro una pausa programmata non conta come buco
+    const pauseOverlap = dayPauses.reduce((tot, p) => {
+      const ps = timeToMinutes(p.start), pe = timeToMinutes(p.end);
+      const overlap = Math.min(startNext, pe) - Math.max(endPrev, ps);
+      return tot + Math.max(0, overlap);
+    }, 0);
+    const idleGap = startNext - endPrev - travel - pauseOverlap;
     if (idleGap > 30) {
       gapWarnings.push({ day, after: withTimes[i].name, before: withTimes[i + 1].name, minutes: idleGap });
     }
@@ -2400,10 +2465,11 @@ async function generatePlan(onlyWeek = null) {
     function availableSlots(pat, d) {
       const blocked = pat.orariBloccati?.filter(o => o.day === d) || [];
       const blockedTimes = blocked.map(b => TIMES[b.time]).filter(Boolean);
-      const dayH = weeklyHours[d] || { start: '13:00', end: '19:00' };
+      const dayH = weeklyHours[d] || { start: '13:00', end: '19:00', pauses: [] };
       return TIMES.filter(t => {
         const tm = timeToMinutes(t);
-        return tm >= timeToMinutes(dayH.start) && tm < timeToMinutes(dayH.end) && !blockedTimes.includes(t);
+        return tm >= timeToMinutes(dayH.start) && tm < timeToMinutes(dayH.end)
+          && !blockedTimes.includes(t) && !isTimeSlotInPause(dayH.pauses, t);
       }).length;
     }
 
@@ -2691,12 +2757,12 @@ function formatDateShort(dateStr) {
 
 const DAYS_FULL = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
 const DEFAULT_HOURS = [
-  { active: true, start: '13:00', end: '19:00' },
-  { active: true, start: '13:00', end: '19:00' },
-  { active: true, start: '13:00', end: '19:00' },
-  { active: true, start: '13:00', end: '19:00' },
-  { active: true, start: '13:00', end: '19:00' },
-  { active: false, start: '13:00', end: '19:00' },
+  { active: true, start: '13:00', end: '19:00', pauses: [] },
+  { active: true, start: '13:00', end: '19:00', pauses: [] },
+  { active: true, start: '13:00', end: '19:00', pauses: [] },
+  { active: true, start: '13:00', end: '19:00', pauses: [] },
+  { active: true, start: '13:00', end: '19:00', pauses: [] },
+  { active: false, start: '13:00', end: '19:00', pauses: [] },
 ];
 
 function renderWeeklyHoursGrid() {
@@ -2707,19 +2773,37 @@ function renderWeeklyHoursGrid() {
 
   grid.innerHTML = DAYS_FULL.map((day, i) => {
     const h = hours[i] || DEFAULT_HOURS[i];
+    const pauses = h.pauses || [];
+    const pausesHtml = pauses.map((p, pi) => `
+      <div id="pause-row-${i}-${pi}" style="display:flex;align-items:center;gap:6px;margin-top:5px">
+        <input type="time" id="pause-start-${i}-${pi}" value="${p.start}" oninput="validateDayRow(${i})"
+          style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
+        <span style="font-size:13px;color:var(--text-muted)">→</span>
+        <input type="time" id="pause-end-${i}-${pi}" value="${p.end}" oninput="validateDayRow(${i})"
+          style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
+        <button type="button" onclick="removePauseRow(${i},${pi})"
+          style="border:none;background:none;color:var(--text-muted);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
+      </div>
+    `).join('');
     return `
-      <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:0.5px solid var(--border)">
-        <label style="display:flex;align-items:center;gap:6px;min-width:90px;cursor:pointer;margin:0;font-size:14px">
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:0.5px solid var(--border)">
+        <label style="display:flex;align-items:center;gap:6px;min-width:90px;cursor:pointer;margin:0;font-size:14px;padding-top:5px">
           <input type="checkbox" id="day-active-${i}" ${h.active ? 'checked' : ''}
             onchange="toggleDayRow(${i})" style="width:auto">
           ${day}
         </label>
-        <div id="day-row-${i}" style="display:flex;align-items:center;gap:6px;${h.active ? '' : 'opacity:0.35;pointer-events:none'}">
-          <input type="time" id="day-start-${i}" value="${h.start}"
-            style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
-          <span style="font-size:13px;color:var(--text-muted)">→</span>
-          <input type="time" id="day-end-${i}" value="${h.end}"
-            style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
+        <div id="day-row-${i}" style="display:flex;flex-direction:column;gap:0;${h.active ? '' : 'opacity:0.35;pointer-events:none'}">
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="time" id="day-start-${i}" value="${h.start}" oninput="validateDayRow(${i})"
+              style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
+            <span style="font-size:13px;color:var(--text-muted)">→</span>
+            <input type="time" id="day-end-${i}" value="${h.end}" oninput="validateDayRow(${i})"
+              style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
+          </div>
+          <div id="pauses-container-${i}">${pausesHtml}</div>
+          <button type="button" onclick="addPauseRow(${i})"
+            style="align-self:flex-start;margin-top:6px;border:none;background:none;color:var(--accent, #1D9E75);font-size:13px;cursor:pointer;padding:0">+ Aggiungi pausa</button>
+          <div id="day-error-${i}" style="display:none;color:#D85A30;font-size:12px;margin-top:5px"></div>
         </div>
       </div>
     `;
@@ -2728,6 +2812,137 @@ function renderWeeklyHoursGrid() {
   // Ripristina preferenza distribuzione
   const radio = document.querySelector(`input[name="distribuzione"][value="${distrib}"]`);
   if (radio) radio.checked = true;
+
+  // Valida subito lo stato caricato, per segnalare eventuali orari già
+  // incoerenti (es. importati o impostati in precedenza).
+  DAYS_FULL.forEach((_, i) => validateDayRow(i));
+}
+
+// Controlla che gli orari di un giorno siano coerenti: la pausa deve stare
+// dentro l'orario di lavoro, avere una fine dopo l'inizio, e non sovrapporsi
+// ad altre pause dello stesso giorno. Evidenzia in rosso i campi sbagliati.
+function validateDayRow(dayIdx) {
+  const startEl = document.getElementById(`day-start-${dayIdx}`);
+  const endEl = document.getElementById(`day-end-${dayIdx}`);
+  const errorEl = document.getElementById(`day-error-${dayIdx}`);
+  if (!startEl || !endEl) return true;
+
+  const normalBorder = '0.5px solid var(--border-strong)';
+  const errorBorder = '1.5px solid #D85A30';
+  const setInvalid = (el, invalid) => { if (el) el.style.border = invalid ? errorBorder : normalBorder; };
+
+  const dayStart = timeToMinutes(startEl.value);
+  const dayEnd = timeToMinutes(endEl.value);
+  const messages = [];
+
+  const dayRangeInvalid = dayEnd <= dayStart;
+  setInvalid(startEl, dayRangeInvalid);
+  setInvalid(endEl, dayRangeInvalid);
+  if (dayRangeInvalid) messages.push("L'orario di fine deve essere dopo l'inizio");
+
+  // Raccoglie tutte le righe di pausa presenti nella UI per questo giorno
+  const pauseRows = [];
+  let pi = 0;
+  while (document.getElementById(`pause-start-${dayIdx}-${pi}`)) {
+    pauseRows.push(pi);
+    pi++;
+  }
+
+  const intervals = [];
+  for (const idx of pauseRows) {
+    const psEl = document.getElementById(`pause-start-${dayIdx}-${idx}`);
+    const peEl = document.getElementById(`pause-end-${dayIdx}-${idx}`);
+    const ps = timeToMinutes(psEl.value);
+    const pe = timeToMinutes(peEl.value);
+    let invalid = false;
+
+    if (pe <= ps) {
+      invalid = true;
+      messages.push(`Pausa ${idx + 1}: la fine deve essere dopo l'inizio`);
+    } else if (!dayRangeInvalid && (ps < dayStart || pe > dayEnd)) {
+      invalid = true;
+      messages.push(`Pausa ${idx + 1}: deve stare dentro l'orario di lavoro (${startEl.value}–${endEl.value})`);
+    }
+    setInvalid(psEl, invalid);
+    setInvalid(peEl, invalid);
+    intervals.push({ idx, ps, pe, invalid });
+  }
+
+  // Controlla sovrapposizioni tra pause dello stesso giorno
+  for (let a = 0; a < intervals.length; a++) {
+    for (let b = a + 1; b < intervals.length; b++) {
+      const A = intervals[a], B = intervals[b];
+      if (A.ps < B.pe && B.ps < A.pe) {
+        messages.push(`Le pause ${A.idx + 1} e ${B.idx + 1} si sovrappongono`);
+        [A, B].forEach(x => {
+          const psEl = document.getElementById(`pause-start-${dayIdx}-${x.idx}`);
+          const peEl = document.getElementById(`pause-end-${dayIdx}-${x.idx}`);
+          setInvalid(psEl, true);
+          setInvalid(peEl, true);
+        });
+      }
+    }
+  }
+
+  if (errorEl) {
+    if (messages.length > 0) {
+      errorEl.textContent = messages.join(' · ');
+      errorEl.style.display = 'block';
+    } else {
+      errorEl.textContent = '';
+      errorEl.style.display = 'none';
+    }
+  }
+
+  return messages.length === 0;
+}
+
+// Aggiunge una riga di pausa (in memoria in settings, poi ridisegna la griglia)
+// così l'input mantiene coerenza anche prima di premere "Salva".
+function addPauseRow(dayIdx) {
+  const hours = settings.weeklyHours || DEFAULT_HOURS.map(h => ({ ...h, pauses: [...(h.pauses || [])] }));
+  // Prima cattura eventuali modifiche già fatte nella UI, per non perderle
+  const collected = collectWorkHoursFromUI(hours);
+  if (!collected[dayIdx].pauses) collected[dayIdx].pauses = [];
+  collected[dayIdx].pauses.push({ start: '13:00', end: '14:00' });
+  settings.weeklyHours = collected;
+  renderWeeklyHoursGrid();
+}
+
+function removePauseRow(dayIdx, pauseIdx) {
+  const hours = settings.weeklyHours || DEFAULT_HOURS;
+  const collected = collectWorkHoursFromUI(hours);
+  collected[dayIdx].pauses.splice(pauseIdx, 1);
+  settings.weeklyHours = collected;
+  renderWeeklyHoursGrid();
+}
+
+// Legge lo stato attuale della griglia orari dalla UI (se presente), altrimenti
+// usa i valori passati come base. Serve per non perdere modifiche non salvate
+// quando si aggiunge/rimuove una riga di pausa.
+function collectWorkHoursFromUI(baseHours) {
+  return DAYS_FULL.map((_, i) => {
+    const activeEl = document.getElementById(`day-active-${i}`);
+    const startEl = document.getElementById(`day-start-${i}`);
+    const endEl = document.getElementById(`day-end-${i}`);
+    if (!activeEl || !startEl || !endEl) {
+      // Griglia non ancora renderizzata: usa i valori esistenti
+      const h = baseHours[i] || DEFAULT_HOURS[i];
+      return { active: h.active, start: h.start, end: h.end, pauses: [...(h.pauses || [])] };
+    }
+    const base = baseHours[i] || DEFAULT_HOURS[i];
+    const pauses = (base.pauses || []).map((p, pi) => {
+      const ps = document.getElementById(`pause-start-${i}-${pi}`);
+      const pe = document.getElementById(`pause-end-${i}-${pi}`);
+      return { start: ps?.value || p.start, end: pe?.value || p.end };
+    });
+    return {
+      active: activeEl.checked,
+      start: startEl.value || '13:00',
+      end: endEl.value || '19:00',
+      pauses,
+    };
+  });
 }
 
 function toggleDayRow(i) {
@@ -2738,11 +2953,12 @@ function toggleDayRow(i) {
 }
 
 function saveWorkHours() {
-  const hours = DAYS_FULL.map((_, i) => ({
-    active: document.getElementById(`day-active-${i}`)?.checked || false,
-    start: document.getElementById(`day-start-${i}`)?.value || '13:00',
-    end: document.getElementById(`day-end-${i}`)?.value || '19:00',
-  }));
+  const allValid = DAYS_FULL.every((_, i) => validateDayRow(i));
+  if (!allValid) {
+    showToast('⚠️ Controlla gli orari evidenziati in rosso prima di salvare', 4000);
+    return;
+  }
+  const hours = collectWorkHoursFromUI(settings.weeklyHours || DEFAULT_HOURS);
   const distrib = document.querySelector('input[name="distribuzione"]:checked')?.value || 'distribuisci';
   settings.weeklyHours = hours;
   settings.distribuzione = distrib;
