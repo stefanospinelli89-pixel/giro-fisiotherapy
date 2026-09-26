@@ -733,6 +733,18 @@
         </div>
       </div>
 
+      <div class="form-group">
+        <label>Modalità di spostamento</label>
+        <select id="input-travel-mode" onchange="saveTravelMode()"
+          style="width:100%;padding:8px 10px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px">
+          <option value="driving">Auto</option>
+          <option value="transit">Mezzi pubblici</option>
+          <option value="walking">A piedi</option>
+          <option value="bicycling">Bicicletta</option>
+        </select>
+        <div class="settings-hint" style="margin-top:5px">Richiede la chiave API Google Maps qui sopra; senza chiave si usa sempre la stima di riserva basata su auto.</div>
+      </div>
+
       <div class="settings-row">
         <div>
           <div class="settings-label">Stato connessione Calendar</div>
@@ -1400,7 +1412,7 @@ function renderWeekGrid() {
             : appts.map((a, ai) => `
               <div class="appt-card">
                 <div class="appt-name">${a.name}</div>
-                <div class="appt-time">${a.time} · ${a.durata} min</div>
+                <div class="appt-time">${a.time} · ${a.durata} min${a._estimated ? ' <span title="Tempo di spostamento stimato (Google Maps non disponibile per questo giorno)" style="color:#B8862E;font-size:11px;font-weight:600">≈ stima</span>' : ''}</div>
                 <div class="appt-addr">${a.addr}</div>
                 ${a.mapsUrl ? `<a href="${a.mapsUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;color:var(--teal-400);text-decoration:none;margin-top:4px;display:block">↗ Apri in Maps</a>` : ''}
                 ${!isPast ? `<div class="appt-move-row">
@@ -1697,21 +1709,28 @@ function nearestNeighborTSP(distMatrix, start = 0, labels = []) {
 }
 
 // Chiama Google Maps Distance Matrix API
-async function fetchDistanceMatrix(origins, destinations, apiKey, departureDateStr) {
+async function fetchDistanceMatrix(origins, destinations, apiKey, departureDateTimeStr, mode = 'driving') {
   const orig = encodeURIComponent(origins.join('|'));
   const dest = encodeURIComponent(destinations.join('|'));
 
-  // Converti la data + orario 13:00 in Unix timestamp per il traffico storico
+  // Converti data+ora di partenza in Unix timestamp. Per i mezzi pubblici è
+  // obbligatorio (gli orari di bus/metro dipendono da quando si parte); per
+  // l'auto serve per la stima del traffico storico.
   let departureParam = '';
-  if (departureDateStr) {
-    const dt = new Date(departureDateStr + 'T13:00:00');
-    if (!isNaN(dt) && dt > new Date()) {
-      const unix = Math.floor(dt.getTime() / 1000);
-      departureParam = `&departure_time=${unix}&traffic_model=best_guess`;
-    }
+  const dt = departureDateTimeStr ? new Date(departureDateTimeStr) : null;
+  const validFutureDate = dt && !isNaN(dt) && dt > new Date();
+
+  if (mode === 'transit') {
+    // Google richiede departure_time per il transit; se manca una data valida
+    // usiamo "adesso" come ripiego, così la richiesta non fallisce.
+    const unix = validFutureDate ? Math.floor(dt.getTime() / 1000) : Math.floor(Date.now() / 1000);
+    departureParam = `&departure_time=${unix}`;
+  } else if (mode === 'driving' && validFutureDate) {
+    const unix = Math.floor(dt.getTime() / 1000);
+    departureParam = `&departure_time=${unix}&traffic_model=best_guess`;
   }
 
-  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${orig}&destinations=${dest}&mode=driving&language=it${departureParam}&key=${apiKey}`;
+  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${orig}&destinations=${dest}&mode=${mode}&language=it&region=it${departureParam}&key=${apiKey}`;
   const res = await fetch(`https://corsproxy.io/?${url}`);
   const data = await res.json();
   return data;
@@ -1786,7 +1805,7 @@ function haversineCoords(a, b) {
 }
 
 // Calcola matrice distanze tramite Maps API o geocodifica OSM
-async function buildDistanceMatrix(addresses, apiKey, departureDateStr) {
+async function buildDistanceMatrix(addresses, apiKey, departureDateTimeStr, mode = 'driving') {
   const n = addresses.length;
   const matrix = Array.from({length: n}, () => new Array(n).fill(0));
   const timeMatrix = Array.from({length: n}, () => new Array(n).fill(15));
@@ -1794,7 +1813,7 @@ async function buildDistanceMatrix(addresses, apiKey, departureDateStr) {
   // Prova con Google Maps API se disponibile
   if (apiKey && addresses.length <= 10) {
     try {
-      const data = await fetchDistanceMatrix(addresses, addresses, apiKey, departureDateStr);
+      const data = await fetchDistanceMatrix(addresses, addresses, apiKey, departureDateTimeStr, mode);
       if (data.status === 'OK') {
         data.rows.forEach((row, i) => {
           row.elements.forEach((el, j) => {
@@ -1812,11 +1831,21 @@ async function buildDistanceMatrix(addresses, apiKey, departureDateStr) {
     }
   }
 
-  // Fallback: geocodifica con OpenStreetMap e distanze in linea d'aria
+  // Fallback: geocodifica con OpenStreetMap e distanze in linea d'aria.
+  // La velocità media stimata dipende dalla modalità di spostamento scelta,
+  // così anche senza chiave API la stima non ipotizza sempre l'auto.
   const coords = await Promise.all(addresses.map(a => geocodeAddress(a)));
 
   console.log('🗺️ Indirizzi da ottimizzare:', addresses);
   console.log('📐 Coordinate trovate:', coords.map((c, i) => `${addresses[i]}: ${c ? `${c.lat.toFixed(4)},${c.lon.toFixed(4)}` : 'FALLITA'}`));
+
+  const speedProfiles = {
+    driving: { kmh: 40, detour: 1.4 },
+    transit: { kmh: 18, detour: 1.3 }, // include tempi di attesa/cambio approssimati
+    walking: { kmh: 4.5, detour: 1.3 },
+    bicycling: { kmh: 15, detour: 1.2 },
+  };
+  const profile = speedProfiles[mode] || speedProfiles.driving;
 
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
@@ -1824,7 +1853,7 @@ async function buildDistanceMatrix(addresses, apiKey, departureDateStr) {
       if (coords[i] && coords[j]) {
         const km = haversineCoords(coords[i], coords[j]);
         matrix[i][j] = km;
-        timeMatrix[i][j] = Math.round((km * 1.4 / 40) * 60);
+        timeMatrix[i][j] = Math.round((km * profile.detour / profile.kmh) * 60);
       } else {
         matrix[i][j] = 5;
         timeMatrix[i][j] = 20;
@@ -2169,10 +2198,19 @@ async function recalcDayKm(week, day) {
   }
 
   const apiKey = settings.gmapKey;
+  const travelMode = settings.travelMode || 'driving';
   const base = settings.baseAddress || '';
   const addresses = [base, ...appts.map(a => a.addr)].filter(Boolean);
 
-  const { matrix, timeMatrix, source } = await buildDistanceMatrix(addresses, apiKey);
+  // Orario di partenza reale (data del giorno + inizio orario di lavoro):
+  // indispensabile per i mezzi pubblici, che seguono orari fissi, e utile
+  // anche per l'auto per stimare il traffico atteso a quell'ora.
+  const dateForDay = getWeekDates(week)[day];
+  const departureDateTimeStr = dateForDay
+    ? `${dateForDay.getFullYear()}-${String(dateForDay.getMonth() + 1).padStart(2, '0')}-${String(dateForDay.getDate()).padStart(2, '0')}T${dayHours.start}:00`
+    : null;
+
+  const { matrix, timeMatrix, source } = await buildDistanceMatrix(addresses, apiKey, departureDateTimeStr, travelMode);
 
   const route = nearestNeighborTSP(matrix, 0, addresses);
   const patientIndices = route.filter(r => r > 0).map(r => r - 1);
@@ -2338,7 +2376,9 @@ async function recalcDayKm(week, day) {
   if (withTimes.length > 0) withTimes[0].km = parseFloat(totalKm.toFixed(1));
   withTimes.forEach(a => {
     a.mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(a.addr)}`;
-    if (source === 'estimate') a._estimated = true;
+    // 'osm' = distanza in linea d'aria stimata (Google Maps non disponibile o
+    // fallito per questo giorno); 'maps' = calcolo reale da Google Maps.
+    a._estimated = (source === 'osm');
   });
 
   // Rileva eventuali buchi orari residui superiori a 30 minuti (al netto dello
@@ -2362,6 +2402,7 @@ async function recalcDayKm(week, day) {
     }
   }
   withTimes.gapWarnings = gapWarnings;
+  withTimes.source = source;
 
   plan[week][day] = withTimes;
   return withTimes.leftover || [];
@@ -2384,6 +2425,11 @@ async function generatePlan(onlyWeek = null) {
     (plan && plan[0]) ? plan[0] : {},
     (plan && plan[1]) ? plan[1] : {},
   ];
+
+  // Traccia quale fonte è stata REALMENTE usata per ciascun giorno generato,
+  // per poter dare un riepilogo finale accurato invece di assumerlo dal solo
+  // fatto che una chiave API sia stata inserita.
+  let daysWithMaps = 0, daysWithOsm = 0;
 
   for (const week of weeksToGenerate) {
     // Filtra pazienti attivi (rispetta date e sedute rimanenti)
@@ -2461,811 +2507,4 @@ async function generatePlan(onlyWeek = null) {
     activeDays.forEach(d => dayMinutesUsed[d] = 0);
     const AVG_TRAVEL_ESTIMATE = 20;
 
-    // Conta quante fasce orarie disponibili ha un paziente in un giorno
-    function availableSlots(pat, d) {
-      const blocked = pat.orariBloccati?.filter(o => o.day === d) || [];
-      const blockedTimes = blocked.map(b => TIMES[b.time]).filter(Boolean);
-      const dayH = weeklyHours[d] || { start: '13:00', end: '19:00', pauses: [] };
-      return TIMES.filter(t => {
-        const tm = timeToMinutes(t);
-        return tm >= timeToMinutes(dayH.start) && tm < timeToMinutes(dayH.end)
-          && !blockedTimes.includes(t) && !isTimeSlotInPause(dayH.pauses, t);
-      }).length;
-    }
-
-    // Per ogni seduta da piazzare, inserisci nel giorno attivo con MENO appuntamenti
-    const allSlots = [];
-    for (const s of sedutePool) {
-      for (let n = 0; n < s.remaining; n++) {
-        allSlots.push(s.patient);
-      }
-    }
-
-    // Ordina per numero di vincoli DECRESCENTE: i pazienti più vincolati vengono piazzati prima
-    allSlots.sort((a, b) => {
-      const slotsA = activeDays.reduce((tot, d) => tot + (availableSlots(a, d) > 0 ? 1 : 0), 0);
-      const slotsB = activeDays.reduce((tot, d) => tot + (availableSlots(b, d) > 0 ? 1 : 0), 0);
-      return slotsA - slotsB;
-    });
-
-    for (const patient of allSlots) {
-      const alreadyAssignedDays = activeDays.filter(d => days[d].some(a => a.id === patient.id));
-
-      // Trova i giorni eleggibili — senza limite fisso di capienza
-      const eligible = activeDays.filter(d => {
-        if (days[d].some(a => a.id === patient.id)) return false;
-        if (availableSlots(patient, d) === 0) return false;
-        if (patient.dataFine) {
-          const dayDate = weekDates[d] || new Date();
-          if (dayDate > new Date(patient.dataFine)) return false;
-        }
-        return true;
-      });
-      if (eligible.length === 0) continue;
-
-      function dayScore(d) {
-        let score = days[d].length * 10;
-        // Penalizza i giorni già più carichi in termini di minuti reali (durata + spostamento),
-        // così l'assegnazione iniziale rispetta meglio la capienza reale del giorno.
-        score += (dayMinutesUsed[d] || 0) * 0.3;
-        for (const ad of alreadyAssignedDays) {
-          const gap = Math.abs(d - ad);
-          if (gap === 0) score += 1000;
-          else if (gap === 1) score += 50;
-          else if (gap === 2) score += 10;
-        }
-        return score;
-      }
-
-      const targetDay = eligible.reduce((best, d) => dayScore(d) < dayScore(best) ? d : best, eligible[0]);
-
-      days[targetDay].push({
-        id: patient.id,
-        name: patient.nome + ' ' + patient.cognome,
-        addr: patient.indirizzo,
-        time: TIMES[0],
-        durata: patient.durata,
-        km: null,
-        mapsUrl: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(patient.indirizzo)}`
-      });
-      dayMinutesUsed[targetDay] = (dayMinutesUsed[targetDay] || 0) + patient.durata + AVG_TRAVEL_ESTIMATE;
-    }
-
-    // Secondo passaggio: forza le sedute ancora mancanti (es. paziente con 3 sedute e solo 2 giorni)
-    for (const s of sedutePool) {
-      const placed = activeDays.reduce((tot, d) => tot + days[d].filter(a => a.id === s.patient.id).length, 0);
-      const stillNeeded = s.remaining - placed;
-      for (let n = 0; n < stillNeeded; n++) {
-        // Prova giorni dove non è ancora presente
-        let eligible = activeDays.filter(d => {
-          if (days[d].some(a => a.id === s.patient.id)) return false;
-          if (availableSlots(s.patient, d) === 0) return false;
-          return true;
-        });
-        // Ultima risorsa: stesso giorno (max 2 sedute per giorno)
-        if (eligible.length === 0) {
-          eligible = activeDays.filter(d => {
-            if (availableSlots(s.patient, d) < 2) return false;
-            return days[d].filter(a => a.id === s.patient.id).length < 2;
-          });
-        }
-        // Ultimissima risorsa: la seduta NON deve mai andare persa. Se nessun giorno
-        // rispetta i vincoli sopra, la piazziamo comunque nel giorno attivo meno carico,
-        // anche a costo di più sedute nello stesso giorno o di ignorare una fascia
-        // bloccata (il ricalcolo orari/tempi successivo proverà comunque a rispettarla
-        // dove possibile, e la seduta resterà comunque visibile e segnalata).
-        if (eligible.length === 0 && activeDays.length > 0) {
-          eligible = activeDays.slice();
-        }
-        if (eligible.length === 0) continue;
-        const targetDay = eligible.reduce((best, d) => (dayMinutesUsed[d]||0) < (dayMinutesUsed[best]||0) ? d : best, eligible[0]);
-        days[targetDay].push({
-          id: s.patient.id,
-          name: s.patient.nome + ' ' + s.patient.cognome,
-          addr: s.patient.indirizzo,
-          time: TIMES[0],
-          durata: s.patient.durata,
-          km: null,
-          mapsUrl: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.patient.indirizzo)}`
-        });
-        dayMinutesUsed[targetDay] = (dayMinutesUsed[targetDay] || 0) + s.patient.durata + AVG_TRAVEL_ESTIMATE;
-      }
-    }
-
-    // "Nessun giorno libero": per ogni giorno attivo ancora vuoto,
-    // sposta un appuntamento dal giorno più carico
-    if (distribuzione === 'nessun-giorno-libero') {
-      for (const emptyDay of activeDays) {
-        if (days[emptyDay].length > 0) continue;
-        // Trova il giorno con più appuntamenti
-        const busiest = activeDays
-          .filter(d => d !== emptyDay && days[d].length > 1)
-          .sort((a, b) => days[b].length - days[a].length)[0];
-        if (busiest === undefined) continue;
-        // Sposta l'ultimo appuntamento del giorno più carico al giorno vuoto
-        const moved = days[busiest].pop();
-        // Riassegna orario al primo slot libero del giorno vuoto
-        const blocked = patients.find(p => p.id === moved.id)?.orariBloccati?.filter(o => o.day === emptyDay).map(o => TIMES[o.time]) || [];
-        const newTime = TIMES.find(t => !blocked.includes(t)) || TIMES[0];
-        moved.time = newTime;
-        moved.km = null;
-        days[emptyDay].push(moved);
-      }
-    }
-
-    // Prima assegna, poi ottimizza orari e percorso
-    weekPlan[week] = days;
-    plan = weekPlan;
-
-    let allLeftover = [];
-    for (const d of activeDays) {
-      if (days[d].length >= 1) {
-        const leftover = await recalcDayKm(week, d);
-        if (leftover && leftover.length) allLeftover = allLeftover.concat(leftover);
-      }
-    }
-
-    // RETE DI SICUREZZA: alcune sedute potrebbero non essere entrate nell'orario
-    // di lavoro del giorno assegnato (giorno troppo pieno). Non vengono mai perse:
-    // si prova a ripiazzarle su un altro giorno attivo con spazio libero.
-    let safetyLoops = 0;
-    while (allLeftover.length > 0 && safetyLoops < 100) {
-      safetyLoops++;
-      const appt = allLeftover.shift();
-
-      let candidates = activeDays
-        .filter(d => plan[week][d] && !plan[week][d].some(a => a.id === appt.id))
-        .sort((d1, d2) => (dayMinutesUsed[d1] || 0) - (dayMinutesUsed[d2] || 0));
-      if (candidates.length === 0) {
-        candidates = activeDays.slice().sort((d1, d2) =>
-          (plan[week][d1]?.length || 0) - (plan[week][d2]?.length || 0));
-      }
-
-      let placed = false;
-      for (const d of candidates) {
-        plan[week][d] = plan[week][d] || [];
-        plan[week][d].push({ ...appt });
-        const leftover2 = (await recalcDayKm(week, d)) || [];
-        const stillOut = leftover2.some(l => l.id === appt.id);
-        // Se il ricalcolo di questo giorno ha spinto fuori un'ALTRA seduta
-        // (di un altro paziente) per fare spazio, quella seduta va rimessa
-        // in coda: non deve mai sparire silenziosamente.
-        const displaced = leftover2.filter(l => l.id !== appt.id);
-        if (displaced.length) allLeftover = allLeftover.concat(displaced);
-
-        if (stillOut) {
-          // Non entra nemmeno qui: annulla il tentativo e prova il giorno successivo
-          plan[week][d] = plan[week][d].filter(a => a.id !== appt.id);
-          await recalcDayKm(week, d);
-        } else {
-          dayMinutesUsed[d] = (dayMinutesUsed[d] || 0) + appt.durata + AVG_TRAVEL_ESTIMATE;
-          placed = true;
-          break;
-        }
-      }
-
-      if (!placed) {
-        // Ultima risorsa: la seduta va comunque fatta. La forziamo nel giorno
-        // meno carico anche oltre l'orario previsto, e avvisiamo l'utente,
-        // invece di farla scomparire silenziosamente dal piano.
-        const fallbackDay = candidates[0] ?? activeDays[0];
-        if (fallbackDay !== undefined) {
-          plan[week][fallbackDay] = plan[week][fallbackDay] || [];
-          plan[week][fallbackDay].push({ ...appt, time: appt.time || TIMES[TIMES.length - 1], _overflow: true });
-          plan[week][fallbackDay].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
-          showToast(`Attenzione: seduta di ${appt.name} forzata oltre l'orario previsto (settimana ${week+1}, giorno troppo pieno)`, 6000);
-        }
-      }
-    }
-
-    // Se per qualche motivo il ciclo si è fermato (limite di sicurezza) con
-    // ancora sedute in coda, non le perdiamo: le forziamo comunque nel giorno
-    // meno carico invece di lasciarle fuori dal piano.
-    for (const appt of allLeftover) {
-      const fallbackDay = activeDays.slice().sort((d1, d2) =>
-        (plan[week][d1]?.length || 0) - (plan[week][d2]?.length || 0))[0];
-      if (fallbackDay !== undefined) {
-        plan[week][fallbackDay] = plan[week][fallbackDay] || [];
-        plan[week][fallbackDay].push({ ...appt, time: appt.time || TIMES[TIMES.length - 1], _overflow: true });
-        plan[week][fallbackDay].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
-        showToast(`Attenzione: seduta di ${appt.name} forzata oltre l'orario previsto (settimana ${week+1}, giorno troppo pieno)`, 6000);
-      }
-    }
-
-    // Riordino cronologico di sicurezza: qualunque cosa sia successo sopra,
-    // ogni giorno deve sempre mostrare le sedute in ordine di orario crescente.
-    for (const d of activeDays) {
-      if (plan[week][d]) {
-        plan[week][d].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
-      }
-    }
-
-    // Segnala (senza nasconderli) eventuali buchi orari residui superiori a 30
-    // minuti: possono restare solo se davvero inevitabili per via delle fasce
-    // bloccate dei pazienti coinvolti.
-    const weekGapWarnings = [];
-    for (const d of activeDays) {
-      if (plan[week][d] && plan[week][d].gapWarnings) {
-        weekGapWarnings.push(...plan[week][d].gapWarnings);
-      }
-    }
-    if (weekGapWarnings.length > 0) {
-      const giorniCoinvolti = [...new Set(weekGapWarnings.map(g => DAYS_FULL[g.day]?.substring(0, 3) || DAYS[g.day]))].join(', ');
-      showToast(`Attenzione: ${weekGapWarnings.length} buco/i orario/i oltre 30 min non evitabile/i per vincoli dei pazienti (settimana ${week+1}: ${giorniCoinvolti})`, 6000);
-    }
-
-    weekPlan[week] = plan[week]; // riprendi i dati aggiornati da recalcDayKm
-  }
-
-  plan = weekPlan;
-  plan.generatedAt = Date.now();
-  localStorage.setItem('giro_plan', JSON.stringify(plan));
-  await dbSavePlan();
-  document.getElementById('btn-send-cal').disabled = false;
-  if (btn) { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Genera piano`; }
-  renderWeekGrid();
-
-  const hasApiKey = !!settings.gmapKey;
-  const weekLabel = weeksToGenerate.length === 1
-    ? (weeksToGenerate[0] === 0 ? 'settimana corrente' : 'settimana successiva')
-    : 'entrambe le settimane';
-  showToast(`Piano (${weekLabel}) ottimizzato con ${hasApiKey ? 'Google Maps' : 'coordinate reali (OSM)'}!`, 3500);
-}
-
-function sendToCalendar() {
-  const apiKey = settings.gmapKey;
-  if (!apiKey) {
-    showToast('Configura prima la chiave API Google nelle impostazioni');
-    showView('impostazioni');
-    return;
-  }
-  openConfirm(
-    'Invia a Google Calendar',
-    'Gli appuntamenti verranno creati (o aggiornati) nel calendario Google. Proseguire?',
-    () => {
-      showToast('Appuntamenti inviati al calendario! ✓', 3000);
-    }
-  );
-}
-
-// ── Settings ──────────────────────────────────────────────────────
-function checkPlanReminder() {
-  const now = new Date();
-  const isSunday = now.getDay() === 0;
-  if (isSunday) {
-    const banner = document.getElementById('plan-reminder');
-    if (banner) banner.style.display = 'flex';
-  }
-}
-
-function dismissReminder() {
-  const banner = document.getElementById('plan-reminder');
-  if (banner) banner.style.display = 'none';
-}
-
-function reminderAndGenerate() {
-  dismissReminder();
-  showView('pianificazione');
-  generatePlan();
-}
-
-function formatDateShort(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.getDate() + '/' + (d.getMonth()+1) + '/' + d.getFullYear();
-}
-
-const DAYS_FULL = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
-const DEFAULT_HOURS = [
-  { active: true, start: '13:00', end: '19:00', pauses: [] },
-  { active: true, start: '13:00', end: '19:00', pauses: [] },
-  { active: true, start: '13:00', end: '19:00', pauses: [] },
-  { active: true, start: '13:00', end: '19:00', pauses: [] },
-  { active: true, start: '13:00', end: '19:00', pauses: [] },
-  { active: false, start: '13:00', end: '19:00', pauses: [] },
-];
-
-function renderWeeklyHoursGrid() {
-  const grid = document.getElementById('weekly-hours-grid');
-  if (!grid) return;
-  const hours = settings.weeklyHours || DEFAULT_HOURS;
-  const distrib = settings.distribuzione || 'distribuisci';
-
-  grid.innerHTML = DAYS_FULL.map((day, i) => {
-    const h = hours[i] || DEFAULT_HOURS[i];
-    const pauses = h.pauses || [];
-    const pausesHtml = pauses.map((p, pi) => `
-      <div id="pause-row-${i}-${pi}" style="display:flex;align-items:center;gap:6px;margin-top:5px">
-        <input type="time" id="pause-start-${i}-${pi}" value="${p.start}" oninput="validateDayRow(${i})"
-          style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
-        <span style="font-size:13px;color:var(--text-muted)">→</span>
-        <input type="time" id="pause-end-${i}-${pi}" value="${p.end}" oninput="validateDayRow(${i})"
-          style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
-        <button type="button" onclick="removePauseRow(${i},${pi})"
-          style="border:none;background:none;color:var(--text-muted);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
-      </div>
-    `).join('');
-    return `
-      <div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:0.5px solid var(--border)">
-        <label style="display:flex;align-items:center;gap:6px;min-width:90px;cursor:pointer;margin:0;font-size:14px;padding-top:5px">
-          <input type="checkbox" id="day-active-${i}" ${h.active ? 'checked' : ''}
-            onchange="toggleDayRow(${i})" style="width:auto">
-          ${day}
-        </label>
-        <div id="day-row-${i}" style="display:flex;flex-direction:column;gap:0;${h.active ? '' : 'opacity:0.35;pointer-events:none'}">
-          <div style="display:flex;align-items:center;gap:6px">
-            <input type="time" id="day-start-${i}" value="${h.start}" oninput="validateDayRow(${i})"
-              style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
-            <span style="font-size:13px;color:var(--text-muted)">→</span>
-            <input type="time" id="day-end-${i}" value="${h.end}" oninput="validateDayRow(${i})"
-              style="width:90px;padding:5px 7px;border:0.5px solid var(--border-strong);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px">
-          </div>
-          <div id="pauses-container-${i}">${pausesHtml}</div>
-          <button type="button" onclick="addPauseRow(${i})"
-            style="align-self:flex-start;margin-top:6px;border:none;background:none;color:var(--accent, #1D9E75);font-size:13px;cursor:pointer;padding:0">+ Aggiungi pausa</button>
-          <div id="day-error-${i}" style="display:none;color:#D85A30;font-size:12px;margin-top:5px"></div>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  // Ripristina preferenza distribuzione
-  const radio = document.querySelector(`input[name="distribuzione"][value="${distrib}"]`);
-  if (radio) radio.checked = true;
-
-  // Valida subito lo stato caricato, per segnalare eventuali orari già
-  // incoerenti (es. importati o impostati in precedenza).
-  DAYS_FULL.forEach((_, i) => validateDayRow(i));
-}
-
-// Controlla che gli orari di un giorno siano coerenti: la pausa deve stare
-// dentro l'orario di lavoro, avere una fine dopo l'inizio, e non sovrapporsi
-// ad altre pause dello stesso giorno. Evidenzia in rosso i campi sbagliati.
-function validateDayRow(dayIdx) {
-  const startEl = document.getElementById(`day-start-${dayIdx}`);
-  const endEl = document.getElementById(`day-end-${dayIdx}`);
-  const errorEl = document.getElementById(`day-error-${dayIdx}`);
-  if (!startEl || !endEl) return true;
-
-  const normalBorder = '0.5px solid var(--border-strong)';
-  const errorBorder = '1.5px solid #D85A30';
-  const setInvalid = (el, invalid) => { if (el) el.style.border = invalid ? errorBorder : normalBorder; };
-
-  const dayStart = timeToMinutes(startEl.value);
-  const dayEnd = timeToMinutes(endEl.value);
-  const messages = [];
-
-  const dayRangeInvalid = dayEnd <= dayStart;
-  setInvalid(startEl, dayRangeInvalid);
-  setInvalid(endEl, dayRangeInvalid);
-  if (dayRangeInvalid) messages.push("L'orario di fine deve essere dopo l'inizio");
-
-  // Raccoglie tutte le righe di pausa presenti nella UI per questo giorno
-  const pauseRows = [];
-  let pi = 0;
-  while (document.getElementById(`pause-start-${dayIdx}-${pi}`)) {
-    pauseRows.push(pi);
-    pi++;
-  }
-
-  const intervals = [];
-  for (const idx of pauseRows) {
-    const psEl = document.getElementById(`pause-start-${dayIdx}-${idx}`);
-    const peEl = document.getElementById(`pause-end-${dayIdx}-${idx}`);
-    const ps = timeToMinutes(psEl.value);
-    const pe = timeToMinutes(peEl.value);
-    let invalid = false;
-
-    if (pe <= ps) {
-      invalid = true;
-      messages.push(`Pausa ${idx + 1}: la fine deve essere dopo l'inizio`);
-    } else if (!dayRangeInvalid && (ps < dayStart || pe > dayEnd)) {
-      invalid = true;
-      messages.push(`Pausa ${idx + 1}: deve stare dentro l'orario di lavoro (${startEl.value}–${endEl.value})`);
-    }
-    setInvalid(psEl, invalid);
-    setInvalid(peEl, invalid);
-    intervals.push({ idx, ps, pe, invalid });
-  }
-
-  // Controlla sovrapposizioni tra pause dello stesso giorno
-  for (let a = 0; a < intervals.length; a++) {
-    for (let b = a + 1; b < intervals.length; b++) {
-      const A = intervals[a], B = intervals[b];
-      if (A.ps < B.pe && B.ps < A.pe) {
-        messages.push(`Le pause ${A.idx + 1} e ${B.idx + 1} si sovrappongono`);
-        [A, B].forEach(x => {
-          const psEl = document.getElementById(`pause-start-${dayIdx}-${x.idx}`);
-          const peEl = document.getElementById(`pause-end-${dayIdx}-${x.idx}`);
-          setInvalid(psEl, true);
-          setInvalid(peEl, true);
-        });
-      }
-    }
-  }
-
-  if (errorEl) {
-    if (messages.length > 0) {
-      errorEl.textContent = messages.join(' · ');
-      errorEl.style.display = 'block';
-    } else {
-      errorEl.textContent = '';
-      errorEl.style.display = 'none';
-    }
-  }
-
-  return messages.length === 0;
-}
-
-// Aggiunge una riga di pausa (in memoria in settings, poi ridisegna la griglia)
-// così l'input mantiene coerenza anche prima di premere "Salva".
-function addPauseRow(dayIdx) {
-  const hours = settings.weeklyHours || DEFAULT_HOURS.map(h => ({ ...h, pauses: [...(h.pauses || [])] }));
-  // Prima cattura eventuali modifiche già fatte nella UI, per non perderle
-  const collected = collectWorkHoursFromUI(hours);
-  if (!collected[dayIdx].pauses) collected[dayIdx].pauses = [];
-  collected[dayIdx].pauses.push({ start: '13:00', end: '14:00' });
-  settings.weeklyHours = collected;
-  renderWeeklyHoursGrid();
-}
-
-function removePauseRow(dayIdx, pauseIdx) {
-  const hours = settings.weeklyHours || DEFAULT_HOURS;
-  const collected = collectWorkHoursFromUI(hours);
-  collected[dayIdx].pauses.splice(pauseIdx, 1);
-  settings.weeklyHours = collected;
-  renderWeeklyHoursGrid();
-}
-
-// Legge lo stato attuale della griglia orari dalla UI (se presente), altrimenti
-// usa i valori passati come base. Serve per non perdere modifiche non salvate
-// quando si aggiunge/rimuove una riga di pausa.
-function collectWorkHoursFromUI(baseHours) {
-  return DAYS_FULL.map((_, i) => {
-    const activeEl = document.getElementById(`day-active-${i}`);
-    const startEl = document.getElementById(`day-start-${i}`);
-    const endEl = document.getElementById(`day-end-${i}`);
-    if (!activeEl || !startEl || !endEl) {
-      // Griglia non ancora renderizzata: usa i valori esistenti
-      const h = baseHours[i] || DEFAULT_HOURS[i];
-      return { active: h.active, start: h.start, end: h.end, pauses: [...(h.pauses || [])] };
-    }
-    const base = baseHours[i] || DEFAULT_HOURS[i];
-    const pauses = (base.pauses || []).map((p, pi) => {
-      const ps = document.getElementById(`pause-start-${i}-${pi}`);
-      const pe = document.getElementById(`pause-end-${i}-${pi}`);
-      return { start: ps?.value || p.start, end: pe?.value || p.end };
-    });
-    return {
-      active: activeEl.checked,
-      start: startEl.value || '13:00',
-      end: endEl.value || '19:00',
-      pauses,
-    };
-  });
-}
-
-function toggleDayRow(i) {
-  const active = document.getElementById(`day-active-${i}`).checked;
-  const row = document.getElementById(`day-row-${i}`);
-  row.style.opacity = active ? '' : '0.35';
-  row.style.pointerEvents = active ? '' : 'none';
-}
-
-function saveWorkHours() {
-  const allValid = DAYS_FULL.every((_, i) => validateDayRow(i));
-  if (!allValid) {
-    showToast('⚠️ Controlla gli orari evidenziati in rosso prima di salvare', 4000);
-    return;
-  }
-  const hours = collectWorkHoursFromUI(settings.weeklyHours || DEFAULT_HOURS);
-  const distrib = document.querySelector('input[name="distribuzione"]:checked')?.value || 'distribuisci';
-  settings.weeklyHours = hours;
-  settings.distribuzione = distrib;
-  localStorage.setItem('giro_settings', JSON.stringify(settings));
-  dbSaveSettings();
-  showToast('Orari e preferenze salvati');
-}
-
-function loadSettings() {
-  settings = JSON.parse(localStorage.getItem('giro_settings') || '{}');
-  if (settings.gmapKey) {
-    document.getElementById('input-gmap-key').value = settings.gmapKey;
-    setStatus('maps', 'ok', 'Configurato');
-    setStatus('cal', 'warn', 'Login richiesto');
-  }
-  if (settings.baseAddress) {
-    document.getElementById('base-address').value = settings.baseAddress;
-  }
-  if (settings.arrivalSameAsDeparture) {
-    document.getElementById('arrival-same').checked = true;
-    document.getElementById('arrival-address').value = settings.baseAddress || '';
-    document.getElementById('arrival-address').disabled = true;
-    document.getElementById('arrival-address').style.opacity = '0.5';
-  } else if (settings.arrivalAddress) {
-    document.getElementById('arrival-address').value = settings.arrivalAddress;
-  }
-  renderWeeklyHoursGrid();
-}
-
-function saveApiKey() {
-  const key = document.getElementById('input-gmap-key').value.trim();
-  if (!key) { showToast('Inserisci la chiave API'); return; }
-  settings.gmapKey = key;
-  localStorage.setItem('giro_settings', JSON.stringify(settings));
-  dbSaveSettings();
-  setStatus('maps', 'ok', 'Configurato');
-  setStatus('cal', 'warn', 'Login richiesto');
-  showToast('Chiave API salvata');
-}
-
-function toggleArrivalSame() {
-  const same = document.getElementById('arrival-same').checked;
-  const arrivalInput = document.getElementById('arrival-address');
-  if (same) {
-    arrivalInput.value = document.getElementById('base-address').value;
-    arrivalInput.disabled = true;
-    arrivalInput.style.opacity = '0.5';
-  } else {
-    arrivalInput.disabled = false;
-    arrivalInput.style.opacity = '';
-  }
-}
-
-function saveBaseAddress() {
-  const base = document.getElementById('base-address').value.trim();
-  if (!base) { showToast('Inserisci l\'indirizzo di partenza'); return; }
-  const same = document.getElementById('arrival-same').checked;
-  const arrival = same ? base : document.getElementById('arrival-address').value.trim();
-  settings.baseAddress = base;
-  settings.arrivalAddress = arrival || base;
-  settings.arrivalSameAsDeparture = same;
-  localStorage.setItem('giro_settings', JSON.stringify(settings));
-  dbSaveSettings();
-  showToast('Indirizzi salvati');
-}
-
-function setStatus(which, state, text) {
-  document.getElementById(which + '-status-dot').className = 'status-dot ' + state;
-  document.getElementById(which + '-status-text').textContent = text;
-}
-
-// ── Google Calendar ───────────────────────────────────────────────
-const GOOGLE_CLIENT_ID = '154764760503-nct4d3dblqr65beu8tfv10opvktekev2.apps.googleusercontent.com';
-const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly';
-let googleAccessToken = null;
-let tokenClient = null;
-
-function updateGoogleButtons() {
-  const loginBtn = document.getElementById('btn-google-login');
-  const logoutBtn = document.getElementById('btn-google-logout');
-  if (!loginBtn || !logoutBtn) return;
-  if (googleAccessToken) {
-    loginBtn.textContent = '✓ Google connesso';
-    logoutBtn.style.display = 'inline-flex';
-  } else {
-    loginBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg> Accedi con Google`;
-    logoutBtn.style.display = 'none';
-  }
-}
-
-function logoutGoogle() {
-  if (googleAccessToken && window.google) {
-    google.accounts.oauth2.revoke(googleAccessToken, () => {
-      googleAccessToken = null;
-      setStatus('cal', 'warn', 'Login richiesto');
-      updateGoogleButtons();
-      showToast('Disconnesso da Google');
-    });
-  } else {
-    googleAccessToken = null;
-    setStatus('cal', 'warn', 'Login richiesto');
-    updateGoogleButtons();
-    showToast('Disconnesso da Google');
-  }
-}
-
-function initGoogleAuth() {
-  if (!window.google) return;
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: CALENDAR_SCOPE,
-    callback: (response) => {
-      if (response.error) {
-        showToast('Errore login Google: ' + response.error, 3000);
-        return;
-      }
-      googleAccessToken = response.access_token;
-      setStatus('cal', 'ok', 'Connesso');
-      updateGoogleButtons();
-      showToast('Google Calendar connesso!');
-    }
-  });
-}
-
-function connectGoogle() {
-  if (!window.google) {
-    showToast('Libreria Google non caricata, ricarica la pagina');
-    return;
-  }
-  if (!tokenClient) initGoogleAuth();
-  tokenClient.requestAccessToken();
-}
-
-let selectedCalendarId = 'primary';
-
-function sendToCalendar() {
-  if (!plan) { showToast('Genera prima il piano'); return; }
-  if (!googleAccessToken) {
-    showToast('⚠️ Token Google non presente — accedi di nuovo', 3000);
-    openConfirm(
-      'Accesso richiesto',
-      'Devi prima accedere con Google per inviare gli appuntamenti al calendario.',
-      () => connectGoogle()
-    );
-    return;
-  }
-  loadCalendarList();
-}
-
-async function loadCalendarList() {
-  showToast('Caricamento calendari...', 3000);
-  try {
-    const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
-      headers: { 'Authorization': 'Bearer ' + googleAccessToken }
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || 'Errore ' + res.status);
-
-    const calendars = data.items?.filter(c => c.accessRole === 'owner' || c.accessRole === 'writer') || [];
-    if (calendars.length === 0) throw new Error('Nessun calendario trovato');
-
-    const list = document.getElementById('cal-list');
-    list.innerHTML = calendars.map(c => `
-      <label style="display:flex;align-items:center;gap:10px;padding:10px;border:0.5px solid var(--border);border-radius:10px;cursor:pointer;margin:0">
-        <input type="radio" name="cal-pick" value="${c.id}" ${c.primary ? 'checked' : ''} style="width:auto">
-        <span style="width:12px;height:12px;border-radius:50%;background:${c.backgroundColor || '#1D9E75'};flex-shrink:0"></span>
-        <span style="font-size:14px">${c.summary}</span>
-      </label>
-    `).join('');
-
-    selectedCalendarId = calendars.find(c => c.primary)?.id || calendars[0].id;
-    document.getElementById('cal-picker-overlay').classList.add('open');
-  } catch(err) {
-    showToast('❌ ' + (err.message || 'Errore sconosciuto'), 4000);
-    console.error('loadCalendarList error:', err);
-  }
-}
-
-function confirmSendToCalendar() {
-  const picked = document.querySelector('input[name="cal-pick"]:checked');
-  if (picked) selectedCalendarId = picked.value;
-  document.getElementById('cal-picker-overlay').classList.remove('open');
-  doSendToCalendar();
-}
-
-async function doSendToCalendar() {
-  const weeklyHours = settings.weeklyHours || DEFAULT_HOURS;
-  const activeDayIndices = [0,1,2,3,4,5].filter(d => weeklyHours[d]?.active);
-  let created = 0, errors = 0;
-
-  showToast('Invio in corso…', 10000);
-
-  for (const weekOffset of [0, 1]) {
-    const weekDates = getWeekDates(weekOffset);
-    const weekPlan = plan[weekOffset];
-    if (!weekPlan) continue;
-
-    for (const dayIdx of activeDayIndices) {
-      const appts = weekPlan[dayIdx] || [];
-      const date = weekDates[dayIdx];
-      if (!date || appts.length === 0) continue;
-
-      const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
-
-      for (const appt of appts) {
-        try {
-          const [startH, startM] = appt.time.split(':').map(Number);
-          const endTotalMins = startH * 60 + startM + appt.durata;
-          const endH = Math.floor(endTotalMins / 60);
-          const endM = endTotalMins % 60;
-
-          const event = {
-            summary: `🏠 ${appt.name}`,
-            location: appt.addr,
-            description: `Fisioterapia domiciliare\nPaziente: ${appt.name}\nIndirizzo: ${appt.addr}${appt.mapsUrl ? '\n\nNaviga: ' + appt.mapsUrl : ''}`,
-            start: {
-              dateTime: `${dateStr}T${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}:00`,
-              timeZone: 'Europe/Rome'
-            },
-            end: {
-              dateTime: `${dateStr}T${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}:00`,
-              timeZone: 'Europe/Rome'
-            },
-            colorId: '2', // verde salvia
-            extendedProperties: {
-              private: {
-                giro_app: 'true',
-                patient_id: appt.id,
-                week_offset: String(weekOffset),
-                day_idx: String(dayIdx)
-              }
-            }
-          };
-
-          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(selectedCalendarId)}/events`, {
-            method: 'POST',
-            headers: {
-              'Authorization': 'Bearer ' + googleAccessToken,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(event)
-          });
-
-          if (res.ok) {
-            created++;
-          } else if (res.status === 401) {
-            // Token scaduto
-            googleAccessToken = null;
-            localStorage.removeItem('giro_google_token');
-            setStatus('cal', 'warn', 'Login richiesto');
-            showToast('Sessione Google scaduta, accedi di nuovo', 3000);
-            return;
-          } else {
-            errors++;
-            console.error('Errore creazione evento:', await res.text());
-          }
-        } catch(err) {
-          errors++;
-          console.error('Errore evento:', err);
-        }
-      }
-    }
-  }
-
-  if (errors === 0) {
-    showToast(`✓ ${created} appuntamenti inviati al calendario!`, 3500);
-  } else {
-    showToast(`${created} inviati, ${errors} errori — controlla la console`, 4000);
-  }
-}
-
-// ── Confirm dialog ─────────────────────────────────────────────────
-let confirmCallback = null;
-function openConfirm(title, msg, cb) {
-  document.getElementById('confirm-title').textContent = title;
-  document.getElementById('confirm-msg').textContent = msg;
-  confirmCallback = cb;
-  document.getElementById('confirm-modal-overlay').classList.add('open');
-  document.getElementById('confirm-ok-btn').onclick = () => {
-    closeConfirm();
-    if (confirmCallback) confirmCallback();
-  };
-}
-function closeConfirm() {
-  document.getElementById('confirm-modal-overlay').classList.remove('open');
-}
-
-// ── Init ───────────────────────────────────────────────────────────
-window.addEventListener('load', async () => {
-  // Inizializza Supabase
-  sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-  // Carica dati da Supabase
-  await dbLoadAll();
-  renderPatients();
-  renderGroupFilter();
-  renderWeekGrid();
-  checkPlanReminder();
-  await syncSeduteFromPlan();
-
-  // Inizializza Google Auth
-  if (window.google) initGoogleAuth();
-  else {
-    const script = document.querySelector('script[src*="accounts.google.com"]');
-    if (script) script.addEventListener('load', initGoogleAuth);
-  }
-});
-</script>
-</body>
-</html>
+    // Conta quante fasce orarie disponibili ha un paziente in un g
