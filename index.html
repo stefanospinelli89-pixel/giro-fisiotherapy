@@ -2143,6 +2143,7 @@ function assignTimes(orderedAppts, travelMinutes, startHour = 13, endMinutes = 1
     const patient = dayIdx >= 0 ? patients.find(p => p.id === a.id) : null;
 
     // Avanza finché l'orario non è bloccato per questo paziente né dentro una pausa
+    const currentBeforeWait = current;
     let attempts = 0;
     while (attempts < 40) {
       if (patient && isTimeBlocked(patient, dayIdx, current, a.durata)) {
@@ -2163,7 +2164,9 @@ function assignTimes(orderedAppts, travelMinutes, startHour = 13, endMinutes = 1
     if (current + a.durata > endMinutes) {
       // Non entra in questo giorno entro l'orario di lavoro: NON la scartiamo,
       // la segnaliamo come "leftover" così può essere ripiazzata su un altro giorno
-      // (le sedute non devono mai andare perse).
+      // (le sedute non devono mai andare perse). L'orologio torna indietro:
+      // una seduta non piazzata non deve far avanzare l'orario delle successive.
+      current = currentBeforeWait;
       leftover.push(a);
       continue;
     }
@@ -2200,7 +2203,10 @@ async function recalcDayKm(week, day) {
   const apiKey = settings.gmapKey;
   const travelMode = settings.travelMode || 'driving';
   const base = settings.baseAddress || '';
-  const addresses = [base, ...appts.map(a => a.addr)].filter(Boolean);
+  // Senza indirizzo base la matrice non ha la riga della base: gli indici dei
+  // pazienti devono restare allineati (nodeOf tiene conto di hasBase).
+  const hasBase = !!base;
+  const addresses = hasBase ? [base, ...appts.map(a => a.addr)] : appts.map(a => a.addr);
 
   // Orario di partenza reale (data del giorno + inizio orario di lavoro):
   // indispensabile per i mezzi pubblici, che seguono orari fissi, e utile
@@ -2212,165 +2218,172 @@ async function recalcDayKm(week, day) {
 
   const { matrix, timeMatrix, source } = await buildDistanceMatrix(addresses, apiKey, departureDateTimeStr, travelMode);
 
-  const route = nearestNeighborTSP(matrix, 0, addresses);
-  const patientIndices = route.filter(r => r > 0).map(r => r - 1);
-  let reordered = patientIndices.map(pi => appts[pi]).filter(Boolean);
+  // ── Ordinamento del giro ─────────────────────────────────────────
+  // Ogni possibile ordine viene valutato simulando DAVVERO la giornata
+  // (orari bloccati dei pazienti, pause, minuti reali di spostamento) e si
+  // sceglie quello con il costo più basso: prima nessuna seduta persa, poi
+  // meno buchi (anche a inizio giornata), poi meno minuti di spostamento.
+  const nodeOf = (a) => appts.indexOf(a) + (hasBase ? 1 : 0);
+  const legMin = (from, to) =>
+    (timeMatrix && timeMatrix[from] && timeMatrix[from][to] !== undefined) ? timeMatrix[from][to] : 20;
+  const legKm = (from, to) =>
+    (matrix && matrix[from] && matrix[from][to] !== undefined) ? matrix[from][to] : 0;
+  const patientOf = new Map(appts.map(a => [a, patients.find(p => p.id === a.id)]));
 
-  // Calcola i tempi di spostamento per un dato ordine
-  function getTravelMins(order) {
-    const mins = [];
-    const firstIdx = appts.indexOf(order[0]) + 1;
-    mins.push(timeMatrix ? timeMatrix[0][firstIdx] : 20);
-    for (let i = 0; i < order.length - 1; i++) {
-      const fromIdx = appts.indexOf(order[i]) + 1;
-      const toIdx = appts.indexOf(order[i+1]) + 1;
-      mins.push(timeMatrix ? timeMatrix[fromIdx][toIdx] : 20);
+  // Minuti di spostamento tra visite consecutive: legs[i] = order[i] → order[i+1]
+  function getLegs(order) {
+    const legs = [];
+    for (let i = 0; i < order.length - 1; i++) legs.push(legMin(nodeOf(order[i]), nodeOf(order[i + 1])));
+    return legs;
+  }
+  function baseLeg(order) {
+    return (hasBase && order.length > 0) ? legMin(0, nodeOf(order[0])) : 0;
+  }
+  function pauseOverlapMinutes(from, to) {
+    return dayPauses.reduce((tot, p) =>
+      tot + Math.max(0, Math.min(to, timeToMinutes(p.end)) - Math.max(from, timeToMinutes(p.start))), 0);
+  }
+  // Primo istante utile (>= t) in cui la seduta non è bloccata né in pausa
+  function firstFeasibleStart(a, t) {
+    const pat = patientOf.get(a);
+    let cur = t, attempts = 0;
+    while (attempts < 40) {
+      if (pat && isTimeBlocked(pat, day, cur, a.durata)) { cur += 15; attempts++; continue; }
+      const p = findOverlappingPause(dayPauses, cur, a.durata);
+      if (p) { cur = roundUpToQuarter(timeToMinutes(p.end)); attempts++; continue; }
+      break;
     }
-    return mins;
+    return cur;
   }
 
-  // Calcola il buco massimo reale (differenza tra arrotondamento e tempo reale)
-  function calcMaxGap(order, tMins) {
-    let maxG = 0;
-    for (let i = 0; i < order.length - 1; i++) {
-      const travel = tMins[i + 1] || 20;
-      const gap = roundUpToQuarter(travel) - travel;
-      maxG = Math.max(maxG, gap);
+  // Simula la giornata con un dato ordine (stessa logica di assignTimes)
+  function simulate(order) {
+    const legs = getLegs(order);
+    let current = roundUpToQuarter(startMins);
+    let unplaced = 0, idleCost = 0, idleTotal = 0;
+    for (let i = 0; i < order.length; i++) {
+      const a = order[i];
+      const arrival = current;
+      const start = firstFeasibleStart(a, arrival);
+      if (start + a.durata > endMins) { unplaced++; continue; }
+      current = start;
+      const waited = Math.max(0, start - arrival - pauseOverlapMinutes(arrival, start));
+      idleTotal += waited;
+      idleCost += waited * 3 + Math.max(0, waited - 30) * 12; // i buchi oltre 30 min pesano molto di più
+      current += a.durata;
+      if (i < order.length - 1) current += roundUpToQuarter(legs[i] || 20);
+      current = roundUpToQuarter(current);
     }
-    return maxG;
+    const travel = legs.reduce((s, x) => s + (x || 0), 0) + baseLeg(order);
+    return { cost: unplaced * 1e6 + idleCost + travel, unplaced, idle: idleTotal, travel };
   }
 
-  let travelMins = getTravelMins(reordered);
-
-  // Prova a ridurre i buchi scambiando coppie di pazienti (max 3 passaggi)
-  for (let pass = 0; pass < 3; pass++) {
-    let improved = false;
-    for (let i = 0; i < reordered.length - 1; i++) {
-      const swapped = [...reordered];
-      [swapped[i], swapped[i+1]] = [swapped[i+1], swapped[i]];
-      const swappedTravel = getTravelMins(swapped);
-      const currentGap = calcMaxGap(reordered, travelMins);
-      const swappedGap = calcMaxGap(swapped, swappedTravel);
-      if (swappedGap < currentGap) {
-        reordered = swapped;
-        travelMins = swappedTravel;
-        improved = true;
+  // Miglioramento locale: sposta/scambia pazienti finché il costo scende
+  function improve(startOrder) {
+    let best = startOrder.slice();
+    let bestSim = simulate(best);
+    const n = best.length;
+    for (let pass = 0; pass < 25; pass++) {
+      let improved = false;
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          if (i === j) continue;
+          const cand = best.slice();
+          const [x] = cand.splice(i, 1);
+          cand.splice(j, 0, x);
+          const s = simulate(cand);
+          if (s.cost < bestSim.cost - 1e-9) { best = cand; bestSim = s; improved = true; }
+        }
       }
-    }
-    if (!improved) break;
-  }
-
-  // Separa pazienti vincolati da quelli liberi
-  const dayHoursForSort = weeklyHours[day] || { start: '13:00', end: '19:00', pauses: [] };
-  const totalSlots = TIMES.filter(t => {
-    const tm = timeToMinutes(t);
-    return tm >= timeToMinutes(dayHoursForSort.start) && tm < timeToMinutes(dayHoursForSort.end)
-      && !isTimeSlotInPause(dayPauses, t);
-  }).length;
-
-  function countSlots(appt) {
-    const pat = patients.find(p => p.id === appt.id);
-    return TIMES.filter(t => {
-      const tm = timeToMinutes(t);
-      if (tm < timeToMinutes(dayHoursForSort.start) || tm >= timeToMinutes(dayHoursForSort.end)) return false;
-      if (isTimeSlotInPause(dayPauses, t)) return false;
-      const blocked = pat?.orariBloccati?.filter(o => o.day === day) || [];
-      return !blocked.some(b => TIMES[b.time] === t);
-    }).length;
-  }
-
-  const constrained = appts.filter(a => countSlots(a) < totalSlots * 0.6);
-  const free = appts.filter(a => countSlots(a) >= totalSlots * 0.6);
-
-  // Calcola il primo orario utile per un paziente vincolato (in minuti dall'inizio giornata)
-  function earliestAvailable(appt) {
-    const pat = patients.find(p => p.id === appt.id);
-    const blocked = pat?.orariBloccati?.filter(o => o.day === day) || [];
-    for (const t of TIMES) {
-      const tm = timeToMinutes(t);
-      if (tm < timeToMinutes(dayHoursForSort.start) || tm >= timeToMinutes(dayHoursForSort.end)) continue;
-      if (isTimeSlotInPause(dayPauses, t)) continue;
-      if (!blocked.some(b => TIMES[b.time] === t)) return tm;
-    }
-    return timeToMinutes(dayHoursForSort.start);
-  }
-
-  // Ordina i vincolati per orario di disponibilità reale, non per quante fasce hanno
-  // libere: un paziente disponibile solo alle 18:00 va visto per ultimo, non per
-  // primo, altrimenti si crea un buco enorme e artificiale a inizio giornata.
-  constrained.sort((a, b) => earliestAvailable(a) - earliestAvailable(b));
-
-  function addrIdx(addr) { return addresses.indexOf(addr); }
-  function dist(addrA, addrB) {
-    const ia = addrIdx(addrA), ib = addrIdx(addrB);
-    return (matrix[ia] && matrix[ia][ib] !== undefined) ? matrix[ia][ib] : 99;
-  }
-  function travelTimeBetween(addrA, addrB) {
-    const ia = addrIdx(addrA), ib = addrIdx(addrB);
-    const raw = (timeMatrix && timeMatrix[ia] && timeMatrix[ia][ib] !== undefined) ? timeMatrix[ia][ib] : 20;
-    return roundUpToQuarter(raw);
-  }
-  // Se una visita di 'durata' minuti a partire da 'startTime' cade dentro una
-  // pausa di lavoro, sposta l'inizio alla fine della pausa (come farà poi assignTimes)
-  function skipPauses(startTime, durata) {
-    let t = startTime, moved = true;
-    while (moved) {
-      moved = false;
-      const p = findOverlappingPause(dayPauses, t, durata);
-      if (p) { t = timeToMinutes(p.end); moved = true; }
-    }
-    return t;
-  }
-
-  // Costruisci il giro simulando il tempo che passa (comprese le pause): prima
-  // di ogni vincolato, inserisci i liberi rimanenti più vicini geograficamente
-  // MA solo se c'è margine sufficiente perché il vincolato successivo non
-  // perda la propria fascia oraria. Così i buchi si riempiono senza sacrificare
-  // i vincoli né sovrapporsi alle pause programmate.
-  let simTime = timeToMinutes(dayHoursForSort.start);
-  let lastAddr = addresses[0];
-  const usedFreeIds = new Set();
-  reordered = [];
-
-  for (let ci = 0; ci <= constrained.length; ci++) {
-    const cPatient = constrained[ci];
-    const deadline = cPatient ? earliestAvailable(cPatient) : Infinity;
-
-    // Riempi il margine prima di questo vincolato (o, nell'ultimo giro, fino
-    // a esaurimento) con i liberi rimasti più vicini che ci stanno in tempo.
-    while (true) {
-      const remainingFree = free.filter(f => !usedFreeIds.has(f.id));
-      if (remainingFree.length === 0) break;
-      const sortedByDist = remainingFree.slice().sort((a, b) => dist(lastAddr, a.addr) - dist(lastAddr, b.addr));
-      let chosen = null, chosenArrival = 0;
-      for (const f of sortedByDist) {
-        const travel = travelTimeBetween(lastAddr, f.addr);
-        const arrival = skipPauses(simTime + travel, f.durata);
-        const finish = arrival + f.durata;
-        if (!cPatient || finish <= deadline) { chosen = f; chosenArrival = arrival; break; }
+      if (n <= 12) {
+        for (let i = 0; i < n - 1; i++) {
+          for (let j = i + 1; j < n; j++) {
+            const cand = best.slice();
+            [cand[i], cand[j]] = [cand[j], cand[i]];
+            const s = simulate(cand);
+            if (s.cost < bestSim.cost - 1e-9) { best = cand; bestSim = s; improved = true; }
+          }
+        }
       }
-      if (!chosen) break; // nessun libero rimasto entra in questo margine
-      reordered.push(chosen);
-      usedFreeIds.add(chosen.id);
-      simTime = chosenArrival + chosen.durata;
-      lastAddr = chosen.addr;
+      if (!improved) break;
     }
-
-    if (cPatient) {
-      const travel = travelTimeBetween(lastAddr, cPatient.addr);
-      const arrival = skipPauses(Math.max(simTime + travel, deadline), cPatient.durata);
-      simTime = arrival + cPatient.durata;
-      lastAddr = cPatient.addr;
-      reordered.push(cPatient);
-    }
+    return { order: best, sim: bestSim };
   }
 
-  travelMins = getTravelMins(reordered);
+  // Punti di partenza diversi per la ricerca:
+  // 1) chi ha la finestra oraria più stretta/tardiva per primo (scadenza più vicina)
+  // 2) vicino più prossimo in minuti di spostamento
+  // 3) costruzione passo passo: sempre la visita che si può fare subito, senza attese
+  function latestStart(a) {
+    const pat = patientOf.get(a);
+    for (let t = roundUpToQuarter(endMins - a.durata); t >= startMins; t -= 15) {
+      if (t + a.durata > endMins) continue;
+      if (pat && isTimeBlocked(pat, day, t, a.durata)) continue;
+      if (isWithinPause(dayPauses, t, a.durata)) continue;
+      return t;
+    }
+    return -1;
+  }
+  const seedEDF = appts.slice().sort((a, b) => latestStart(a) - latestStart(b));
 
+  const seedNN = (() => {
+    const rem = appts.slice(), out = [];
+    let prev = hasBase ? 0 : null;
+    while (rem.length) {
+      let bi = 0, bv = Infinity;
+      rem.forEach((c, k) => {
+        const v = prev === null ? 0 : legMin(prev, nodeOf(c));
+        if (v < bv) { bv = v; bi = k; }
+      });
+      const [c] = rem.splice(bi, 1);
+      out.push(c);
+      prev = nodeOf(c);
+    }
+    return out;
+  })();
+
+  const seedGreedy = (() => {
+    const rem = appts.slice(), out = [];
+    let prevEnd = null, prevNode = hasBase ? 0 : null;
+    while (rem.length) {
+      let best = null, bestKey = null;
+      for (const c of rem) {
+        const travel = (prevEnd !== null && prevNode !== null) ? roundUpToQuarter(legMin(prevNode, nodeOf(c))) : 0;
+        const arrival = prevEnd === null ? roundUpToQuarter(startMins) : roundUpToQuarter(prevEnd + travel);
+        const start = firstFeasibleStart(c, arrival);
+        if (start + c.durata > endMins) continue;
+        const wait = start - arrival - pauseOverlapMinutes(arrival, start);
+        const key = [wait, travel, latestStart(c)];
+        if (!bestKey || key[0] < bestKey[0] ||
+            (key[0] === bestKey[0] && (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2])))) {
+          best = { c, start }; bestKey = key;
+        }
+      }
+      if (!best) { out.push(...rem); break; }
+      rem.splice(rem.indexOf(best.c), 1);
+      out.push(best.c);
+      prevEnd = best.start + best.c.durata;
+      prevNode = nodeOf(best.c);
+    }
+    return out;
+  })();
+
+  let chosen = null;
+  for (const seed of [seedEDF, seedNN, seedGreedy]) {
+    const r = improve(seed);
+    if (!chosen || r.sim.cost < chosen.sim.cost) chosen = r;
+  }
+  let reordered = chosen.order;
+  let travelMins = getLegs(reordered);
+
+  if (addresses.length > 0) {
+    console.log('🔀 Percorso ottimizzato:', [hasBase ? addresses[0] : null, ...reordered.map(a => a.addr)].filter(Boolean).join(' → '));
+  }
+
+  // Chilometri totali del giro nell'ordine finale (dalla base fino all'ultima visita)
   let totalKm = 0;
-  for (let i = 0; i < route.length - 1; i++) {
-    totalKm += matrix[route[i]][route[i+1]];
-  }
+  if (hasBase && reordered.length > 0) totalKm += legKm(0, nodeOf(reordered[0]));
+  for (let i = 0; i < reordered.length - 1; i++) totalKm += legKm(nodeOf(reordered[i]), nodeOf(reordered[i + 1]));
 
   const withTimes = assignTimes(reordered, travelMins, startMins / 60, endMins, day, dayPauses);
   if (withTimes.length > 0) withTimes[0].km = parseFloat(totalKm.toFixed(1));
@@ -2400,6 +2413,13 @@ async function recalcDayKm(week, day) {
     if (idleGap > 30) {
       gapWarnings.push({ day, after: withTimes[i].name, before: withTimes[i + 1].name, minutes: idleGap });
     }
+  }
+  // Anche il buco a inizio giornata (primo paziente molto dopo l'orario di
+  // apertura) conta: se non si può riempire con nessun altro paziente, lo segnaliamo.
+  if (withTimes.length > 0) {
+    const firstStart = timeToMinutes(withTimes[0].time);
+    const lead = firstStart - roundUpToQuarter(startMins) - pauseOverlapMinutes(startMins, firstStart);
+    if (lead > 30) gapWarnings.unshift({ day, after: 'Inizio giornata', before: withTimes[0].name, minutes: lead });
   }
   withTimes.gapWarnings = gapWarnings;
   withTimes.source = source;
@@ -2534,6 +2554,16 @@ async function generatePlan(onlyWeek = null) {
       return slotsA - slotsB;
     });
 
+    // Raggruppamento per zona: geocodifica (con cache) gli indirizzi dei pazienti
+    // da piazzare. Serve al passaggio di scambio tra giorni (più sotto), che
+    // avvicina i pazienti della stessa zona senza cambiare il numero di sedute
+    // per giorno.
+    const zoneCoords = new Map();
+    const zoneAddrs = [...new Set(sedutePool.map(s => s.patient.indirizzo).filter(Boolean))];
+    await Promise.all(zoneAddrs.map(async addr => {
+      try { const c = await geocodeAddress(addr); if (c) zoneCoords.set(addr, c); } catch (e) { /* nessun raggruppamento per questo indirizzo */ }
+    }));
+
     for (const patient of allSlots) {
       const alreadyAssignedDays = activeDays.filter(d => days[d].some(a => a.id === patient.id));
 
@@ -2637,6 +2667,65 @@ async function generatePlan(onlyWeek = null) {
         moved.km = null;
         days[emptyDay].push(moved);
       }
+    }
+
+    // Miglioramento per zona: scambia pazienti tra giorni quando ciò rende le zone
+    // di ogni giorno più compatte. Ogni giorno mantiene lo stesso numero di sedute,
+    // quindi la distribuzione scelta (accorpa / distribuisci / nessun giorno libero)
+    // non cambia; si rispettano i vincoli orari, le date di fine cura e la capienza.
+    if (zoneCoords.size >= 2) {
+      const dayWindow = (d) => {
+        const h = weeklyHours[d] || { start: '13:00', end: '19:00', pauses: [] };
+        const pausesMin = (h.pauses || []).reduce((t, pz) => t + Math.max(0, timeToMinutes(pz.end) - timeToMinutes(pz.start)), 0);
+        return timeToMinutes(h.end) - timeToMinutes(h.start) - pausesMin;
+      };
+      const loadOf = (list) => list.reduce((t, a) => t + a.durata + AVG_TRAVEL_ESTIMATE, 0);
+      // Compattezza di un giorno = somma delle distanze (km) tra tutte le coppie di pazienti
+      const compactness = (list) => {
+        let tot = 0;
+        for (let a = 0; a < list.length; a++) {
+          for (let b = a + 1; b < list.length; b++) {
+            const ca = zoneCoords.get(list[a].addr), cb = zoneCoords.get(list[b].addr);
+            if (ca && cb) tot += haversineCoords(ca, cb);
+          }
+        }
+        return tot;
+      };
+      const canGo = (entry, d) => {
+        if (days[d].some(x => x.id === entry.id)) return false;
+        const pat = patients.find(pt => pt.id === entry.id);
+        if (!pat || availableSlots(pat, d) === 0) return false;
+        if (pat.dataFine) {
+          const dd = weekDates[d] || new Date();
+          if (dd > new Date(pat.dataFine)) return false;
+        }
+        return true;
+      };
+      for (let pass = 0; pass < 10; pass++) {
+        let improved = false;
+        for (let i = 0; i < activeDays.length; i++) {
+          for (let j = i + 1; j < activeDays.length; j++) {
+            const di = activeDays[i], dj = activeDays[j];
+            for (let x = 0; x < days[di].length; x++) {
+              for (let y = 0; y < days[dj].length; y++) {
+                const A = days[di][x], B = days[dj][y];
+                if (A.id === B.id || !canGo(A, dj) || !canGo(B, di)) continue;
+                const newI = days[di].slice(); newI[x] = B;
+                const newJ = days[dj].slice(); newJ[y] = A;
+                if (loadOf(newI) > Math.max(loadOf(days[di]), dayWindow(di))) continue;
+                if (loadOf(newJ) > Math.max(loadOf(days[dj]), dayWindow(dj))) continue;
+                const before = compactness(days[di]) + compactness(days[dj]);
+                const after = compactness(newI) + compactness(newJ);
+                if (after < before - 0.5) {
+                  days[di] = newI; days[dj] = newJ; improved = true;
+                }
+              }
+            }
+          }
+        }
+        if (!improved) break;
+      }
+      activeDays.forEach(d => { dayMinutesUsed[d] = loadOf(days[d]); });
     }
 
     // Prima assegna, poi ottimizza orari e percorso
