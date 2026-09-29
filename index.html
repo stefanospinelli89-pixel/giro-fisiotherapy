@@ -709,7 +709,7 @@
   <div class="view" id="view-impostazioni">
     <div class="page-header">
       <div class="page-title">Impostazioni</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Versione programma: 28/09/2026 · ordinamento a simulazione + raggruppamento per zona</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Versione programma: 28/09/2026 (v2) · ordinamento con inversione di percorso (2-opt) + raggruppamento per zona</div>
     </div>
 
     <div class="settings-card">
@@ -2304,6 +2304,18 @@ async function recalcDayKm(week, day) {
             const s = simulate(cand);
             if (s.cost < bestSim.cost - 1e-9) { best = cand; bestSim = s; improved = true; }
           }
+        }
+      }
+      // Inversione di un tratto del percorso (2-opt): elimina i percorsi che si
+      // incrociano da soli, cosa che spostare o scambiare due pazienti alla
+      // volta non riesce sempre a correggere.
+      for (let i = 0; i < n - 1; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const cand = best.slice();
+          const seg = cand.slice(i, j + 1).reverse();
+          cand.splice(i, seg.length, ...seg);
+          const s = simulate(cand);
+          if (s.cost < bestSim.cost - 1e-9) { best = cand; bestSim = s; improved = true; }
         }
       }
       if (!improved) break;
