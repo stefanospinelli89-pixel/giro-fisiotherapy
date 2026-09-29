@@ -1447,7 +1447,7 @@ function renderWeekGrid() {
         </div>
         ${km > 0 ? `<div class="day-km">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 12l4-4M3 12l4 4"/></svg>
-          ${kmText} · ${appts.length} pazienti
+          ${kmText} · ${appts.length} pazienti ${appts[0]?.dbg ? `<button onclick="showDayDiag(${currentWeekOffset},${i})" style="border:0;background:none;font-size:15px;cursor:pointer;padding:0 2px" title="Dettagli del giro">ⓘ</button>` : ''}
         </div>` : ''}
       </div>
     `;
@@ -1470,6 +1470,11 @@ async function cancelAppt(week, day, apptIdx) {
       showToast('Appuntamento annullato');
     }
   );
+}
+
+function showDayDiag(week, day) {
+  const a = plan && plan[week] && plan[week][day] && plan[week][day][0];
+  alert(a && a.dbg ? a.dbg : 'Nessun dettaglio disponibile: rigenera il piano.');
 }
 
 async function moveAppt(week, fromDay, apptIdx, toDay) {
@@ -2456,6 +2461,30 @@ async function recalcDayKm(week, day) {
     const r = improve(seed);
     if (!chosen || r.sim.cost < chosen.sim.cost) chosen = r;
   }
+  // Giornate piccole (≤ 8 visite): si provano TUTTI gli ordini possibili, così
+  // l'ordine scelto è davvero il migliore secondo il costo, non solo un buon
+  // risultato della ricerca locale. Si tiene anche il percorso più corto in
+  // assoluto (ignorando orari e pause) per la diagnostica a schermo.
+  let pureBest = null;
+  if (appts.length >= 2 && appts.length <= 8) {
+    const n = appts.length, used = new Array(n).fill(false), cur = [];
+    let exBest = null;
+    const rec = () => {
+      if (cur.length === n) {
+        const order = cur.map(k => appts[k]);
+        const sim = simulate(order);
+        if (!exBest || sim.cost < exBest.sim.cost - 1e-9) exBest = { order, sim };
+        if (!pureBest || sim.travel < pureBest.sim.travel - 1e-9) pureBest = { order, sim };
+        return;
+      }
+      for (let k = 0; k < n; k++) {
+        if (used[k]) continue;
+        used[k] = true; cur.push(k); rec(); cur.pop(); used[k] = false;
+      }
+    };
+    rec();
+    if (exBest && exBest.sim.cost < chosen.sim.cost - 1e-9) chosen = exBest;
+  }
   let reordered = chosen.order;
   let travelMins = getLegs(reordered);
 
@@ -2470,6 +2499,19 @@ async function recalcDayKm(week, day) {
 
   const withTimes = assignTimes(reordered, travelMins, startMins / 60, endMins, day, dayPauses);
   if (withTimes.length > 0) withTimes[0].km = parseFloat(totalKm.toFixed(1));
+  if (withTimes.length > 0) {
+    const nm = a => (a.name || '?');
+    const line = (o, sm) => `${o.map(nm).join(' → ')}\n   viaggio ${sm.travel} min · non piazzate ${sm.unplaced} · attese ${sm.idle} min`;
+    const nodes = [...(hasBase ? [{ name: 'BASE', addr: base }] : []), ...appts];
+    const rows = nodes.map((r, i) => `${i}) ` + nodes.map((c, j) => String(Math.round(legMin(i, j))).padStart(3)).join(''));
+    withTimes[0].dbg = [
+      `Fonte distanze: ${source === 'maps' ? 'Google Maps' : 'stima linea d\'aria (OSM)'}`,
+      `Orari: ${dayHours.start}–${dayHours.end}`,
+      `SCELTO:\n${hasBase ? 'BASE → ' : ''}${line(reordered, chosen.sim)}`,
+      pureBest ? `PIÙ CORTO IN ASSOLUTO:\n${hasBase ? 'BASE → ' : ''}${line(pureBest.order, pureBest.sim)}` : '',
+      `Minuti tra le tappe:\n${nodes.map((x, i) => `${i} = ${nm(x)}${x.addr ? ' (' + String(x.addr).slice(0, 28) + ')' : ''}`).join('\n')}\n${rows.join('\n')}`
+    ].filter(Boolean).join('\n\n');
+  }
   withTimes.forEach(a => {
     a.mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(a.addr)}`;
     // 'osm' = distanza in linea d'aria stimata (Google Maps non disponibile o
