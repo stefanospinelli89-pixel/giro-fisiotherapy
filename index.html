@@ -1737,28 +1737,64 @@ async function fetchDistanceMatrix(origins, destinations, apiKey, departureDateT
   return data;
 }
 
-// Cache geocoding per non ripetere le stesse richieste
-const geocodeCache = {};
+// Cache geocoding: persistente (localStorage) + coda seriale.
+// Nominatim ammette ~1 richiesta al secondo. Con richieste parallele risponde
+// 429 e gli indirizzi risultavano "non trovati": la matrice si riempiva di
+// distanze fittizie tutte uguali (5 km / 20 min) e il giro perdeva ogni logica.
+const GEO_LS_KEY = 'giro_geocache_v1';
+const geocodeCache = (() => {
+  try { return JSON.parse(localStorage.getItem(GEO_LS_KEY) || '{}'); } catch (e) { return {}; }
+})();
+function saveGeocodeCache() {
+  try { localStorage.setItem(GEO_LS_KEY, JSON.stringify(geocodeCache)); } catch (e) { /* storage pieno o non disponibile */ }
+}
+const geocodeFailed = new Map();   // indirizzo → timestamp dell'ultimo fallimento (solo sessione)
+const geoInflight = {};            // richieste già in corso per lo stesso indirizzo
+const geoWarned = new Set();       // indirizzi già segnalati all'utente
+let geoQueue = Promise.resolve();
+let geoLastCall = 0;
+const geoSleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function geocodeAddress(address) {
-  if (geocodeCache[address]) return geocodeCache[address];
+// Esegue le chiamate di rete una alla volta, distanziate di almeno 1,1 secondi
+function geoThrottled(fn) {
+  const run = geoQueue.then(async () => {
+    const wait = Math.max(0, geoLastCall + 1100 - Date.now());
+    if (wait) await geoSleep(wait);
+    try { return await fn(); } finally { geoLastCall = Date.now(); }
+  });
+  geoQueue = run.catch(() => {});
+  return run;
+}
+
+function geocodeAddress(address) {
+  if (geocodeCache[address]) return Promise.resolve(geocodeCache[address]);
+  // Un fallimento recente non viene ritentato subito (evita di martellare Nominatim)
+  const failedAt = geocodeFailed.get(address);
+  if (failedAt && Date.now() - failedAt < 60000) return Promise.resolve(null);
+  if (!geoInflight[address]) {
+    geoInflight[address] = geocodeAddressUncached(address)
+      .finally(() => { delete geoInflight[address]; });
+  }
+  return geoInflight[address];
+}
+
+async function geocodeAddressUncached(address) {
+  const found = (coords, note) => {
+    if (note) console.log(note);
+    geocodeCache[address] = coords;
+    saveGeocodeCache();
+    return coords;
+  };
 
   // Tentativo 1: indirizzo completo
   const result = await tryGeocode(address);
-  if (result) {
-    geocodeCache[address] = result;
-    return result;
-  }
+  if (result) return found(result);
 
   // Tentativo 2: rimuovi il numero civico (es. "via don bosco 1" → "via don bosco")
   const withoutNumber = address.replace(/,?\s*\d+[a-z]?\b/gi, '').trim();
   if (withoutNumber !== address) {
     const result2 = await tryGeocode(withoutNumber);
-    if (result2) {
-      console.log(`📍 Geocodifica riuscita senza civico: "${withoutNumber}"`);
-      geocodeCache[address] = result2;
-      return result2;
-    }
+    if (result2) return found(result2, `📍 Geocodifica riuscita senza civico: "${withoutNumber}"`);
   }
 
   // Tentativo 3: solo città (ultima parte dopo l'ultima virgola)
@@ -1766,29 +1802,34 @@ async function geocodeAddress(address) {
   if (parts.length > 1) {
     const cityOnly = parts[parts.length - 1].trim();
     const result3 = await tryGeocode(cityOnly);
-    if (result3) {
-      console.log(`📍 Geocodifica riuscita con sola città: "${cityOnly}"`);
-      geocodeCache[address] = result3;
-      return result3;
-    }
+    if (result3) return found(result3, `📍 Geocodifica riuscita con sola città: "${cityOnly}"`);
   }
 
   console.warn(`❌ Geocodifica fallita per: "${address}"`);
+  geocodeFailed.set(address, Date.now());
   return null;
 }
 
 async function tryGeocode(query) {
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=it`;
-    const res = await fetch(url, { headers: { 'Accept-Language': 'it' } });
-    const data = await res.json();
-    if (data && data.length > 0) {
-      const coords = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
-      console.log(`📍 Geocodifica OK: "${query}" → ${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}`);
-      return coords;
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=it`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const data = await geoThrottled(async () => {
+        const res = await fetch(url, { headers: { 'Accept-Language': 'it' } });
+        if (res.status === 429 || res.status >= 500) return 'retry'; // troppo veloci o server occupato
+        if (!res.ok) return [];
+        return res.json();
+      });
+      if (data === 'retry') { await geoSleep(2500); continue; }
+      if (data && data.length > 0) {
+        const coords = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+        console.log(`📍 Geocodifica OK: "${query}" → ${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}`);
+        return coords;
+      }
+      return null; // risposta valida ma nessun risultato
+    } catch (err) {
+      console.warn('Geocoding errore:', err);
     }
-  } catch(err) {
-    console.warn('Geocoding errore:', err);
   }
   return null;
 }
@@ -1836,6 +1877,12 @@ async function buildDistanceMatrix(addresses, apiKey, departureDateTimeStr, mode
   // La velocità media stimata dipende dalla modalità di spostamento scelta,
   // così anche senza chiave API la stima non ipotizza sempre l'auto.
   const coords = await Promise.all(addresses.map(a => geocodeAddress(a)));
+
+  const notLocated = addresses.filter((a, i) => !coords[i] && !geoWarned.has(a));
+  if (notLocated.length > 0) {
+    notLocated.forEach(a => geoWarned.add(a));
+    showToast('⚠️ Indirizzo non localizzato: ' + notLocated.join(' • ') + ' — il giro potrebbe non essere ottimale', 6000);
+  }
 
   console.log('🗺️ Indirizzi da ottimizzare:', addresses);
   console.log('📐 Coordinate trovate:', coords.map((c, i) => `${addresses[i]}: ${c ? `${c.lat.toFixed(4)},${c.lon.toFixed(4)}` : 'FALLITA'}`));
