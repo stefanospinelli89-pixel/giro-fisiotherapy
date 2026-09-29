@@ -700,6 +700,8 @@
       <span style="font-size:13px;color:var(--text-hint)">Usa i bottoni sugli appuntamenti per spostarli</span>
     </div>
 
+    <div id="unplaced-banner" style="display:none;margin:0 0 12px;padding:12px 14px;border-radius:10px;font-size:14px;line-height:1.4;background:rgba(192,57,43,.12);border:1px solid rgba(192,57,43,.45)"></div>
+
     <div class="week-grid" id="week-grid">
       <!-- giorni generati via JS -->
     </div>
@@ -1395,6 +1397,20 @@ function renderWeekGrid() {
   grid.style.gridTemplateColumns = `repeat(${Math.max(1, activeDayIndices.length)}, 1fr)`;
   const weekPlan = plan ? plan[currentWeekOffset] : null;
 
+  // Avviso persistente per le sedute che non hanno trovato posto
+  const banner = document.getElementById('unplaced-banner');
+  if (banner) {
+    const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const un = (weekPlan && weekPlan.unplaced) || [];
+    if (un.length > 0) {
+      banner.innerHTML = '⚠️ <b>Non sono riuscito a piazzare:</b> ' + un.map(u => `${esc(u.name)} (${u.durata} min)`).join(', ')
+        + '. Nessun giorno ha posto libero, quindi non l\'ho messa in sovrapposizione. Libera spazio o cambia orari/vincoli e rigenera il piano.';
+      banner.style.display = 'block';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
   grid.innerHTML = activeDayIndices.map(i => {
     const date = allDates[i];
     const isPast = date && date < today;
@@ -1413,7 +1429,7 @@ function renderWeekGrid() {
             : appts.map((a, ai) => `
               <div class="appt-card">
                 <div class="appt-name">${a.name}</div>
-                <div class="appt-time">${a.time} · ${a.durata} min${a._estimated ? ' <span title="Tempo di spostamento stimato (Google Maps non disponibile per questo giorno)" style="color:#B8862E;font-size:11px;font-weight:600">≈ stima</span>' : ''}</div>
+                <div class="appt-time">${a.time} · ${a.durata} min${a._overflow ? ' <span title="Nessun posto libero entro gli orari di lavoro di questo giorno" style="color:#C0392B;font-size:11px;font-weight:600">⚠️ fuori orario</span>' : ''}${a._estimated ? ' <span title="Tempo di spostamento stimato (Google Maps non disponibile per questo giorno)" style="color:#B8862E;font-size:11px;font-weight:600">≈ stima</span>' : ''}</div>
                 <div class="appt-addr">${a.addr}</div>
                 ${a.mapsUrl ? `<a href="${a.mapsUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;color:var(--teal-400);text-decoration:none;margin-top:4px;display:block">↗ Apri in Maps</a>` : ''}
                 ${!isPast ? `<div class="appt-move-row">
@@ -1463,26 +1479,33 @@ async function moveAppt(week, fromDay, apptIdx, toDay) {
 
   const moved = { ...srcAppts[apptIdx] };
 
-  // Verifica se l'appuntamento entra negli orari del giorno di destinazione
+  // Prova davvero lo spostamento: ricalcola il giorno di destinazione con i tempi
+  // di viaggio reali. Se la seduta (o un'altra) non entra, si ripristina tutto.
+  // Il vecchio controllo simulava 30 min fissi tra una visita e l'altra e rifiutava
+  // spostamenti che in realtà entravano.
   const weeklyHours = settings.weeklyHours || DEFAULT_HOURS;
   const dayHours = weeklyHours[toDay] || { start: '13:00', end: '19:00' };
-  const startMins = timeToMinutes(dayHours.start);
-  const endMins = timeToMinutes(dayHours.end);
-  const existingAppts = plan[week][toDay] || [];
-
-  // Simula l'inserimento per vedere se entra
-  const testAppts = [...existingAppts, moved];
-  const testResult = assignTimes(testAppts, new Array(testAppts.length).fill(20), startMins / 60, endMins, toDay, dayHours.pauses || []);
-  if (testResult.length < testAppts.length) {
-    showToast(`❌ Non entra negli orari di ${DAYS_FULL[toDay]} (${dayHours.start}–${dayHours.end})`, 3500);
-    return; // Non spostare — l'appuntamento rimane dove sta
-  }
+  const backupFrom = srcAppts.map(a => ({ ...a }));
+  const backupTo = (plan[week][toDay] || []).map(a => ({ ...a }));
+  const restore = () => { plan[week][fromDay] = backupFrom; plan[week][toDay] = backupTo; };
 
   plan[week][fromDay] = srcAppts.filter((_, i) => i !== apptIdx);
-  if (!plan[week][toDay]) plan[week][toDay] = [];
-  plan[week][toDay].push(moved);
+  plan[week][toDay] = [...backupTo.map(a => ({ ...a })), moved];
 
-  await recalcDayKm(week, toDay);
+  let leftover = [];
+  try {
+    leftover = (await recalcDayKm(week, toDay)) || [];
+  } catch (err) {
+    console.warn('Spostamento annullato per errore:', err);
+    restore();
+    showToast('❌ Spostamento non riuscito, riprova', 3500);
+    return;
+  }
+  if (leftover.length > 0) {
+    restore();
+    showToast(`❌ Non entra negli orari di ${DAYS_FULL[toDay]} (${dayHours.start}–${dayHours.end})`, 3500);
+    return; // l'appuntamento rimane dove sta
+  }
   await recalcDayKm(week, fromDay);
 
   localStorage.setItem('giro_plan', JSON.stringify(plan));
@@ -2220,7 +2243,7 @@ function assignTimes(orderedAppts, travelMinutes, startHour = 13, endMinutes = 1
     }
     const hh = String(Math.floor(current / 60)).padStart(2, '0');
     const mm = String(current % 60).padStart(2, '0');
-    result.push({ ...a, time: `${hh}:${mm}` });
+    result.push({ ...a, time: `${hh}:${mm}`, _overflow: false });
     current += a.durata;
     if (i < orderedAppts.length - 1) {
       current += roundUpToQuarter(travelMinutes[i] || 20);
@@ -2512,6 +2535,7 @@ async function generatePlan(onlyWeek = null) {
   let daysWithMaps = 0, daysWithOsm = 0;
 
   for (const week of weeksToGenerate) {
+    const unplacedThisWeek = [];
     // Filtra pazienti attivi (rispetta date e sedute rimanenti)
     const today = new Date();
     const activePatientsBase = patients.filter(p => {
@@ -2840,16 +2864,10 @@ async function generatePlan(onlyWeek = null) {
       }
 
       if (!placed) {
-        // Ultima risorsa: la seduta va comunque fatta. La forziamo nel giorno
-        // meno carico anche oltre l'orario previsto, e avvisiamo l'utente,
-        // invece di farla scomparire silenziosamente dal piano.
-        const fallbackDay = candidates[0] ?? activeDays[0];
-        if (fallbackDay !== undefined) {
-          plan[week][fallbackDay] = plan[week][fallbackDay] || [];
-          plan[week][fallbackDay].push({ ...appt, time: appt.time || TIMES[TIMES.length - 1], _overflow: true });
-          plan[week][fallbackDay].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
-          showToast(`Attenzione: seduta di ${appt.name} forzata oltre l'orario previsto (settimana ${week+1}, giorno troppo pieno)`, 6000);
-        }
+        // Nessun giorno ha posto: la seduta NON viene forzata (finirebbe
+        // sovrapposta a un'altra). Si registra come "non piazzata" e si avvisa.
+        unplacedThisWeek.push({ id: appt.id, name: appt.name, durata: appt.durata });
+        showToast(`⚠️ Non sono riuscito a piazzare una seduta di ${appt.name} (settimana ${week+1}): nessun posto libero`, 6000);
       }
     }
 
@@ -2857,14 +2875,8 @@ async function generatePlan(onlyWeek = null) {
     // ancora sedute in coda, non le perdiamo: le forziamo comunque nel giorno
     // meno carico invece di lasciarle fuori dal piano.
     for (const appt of allLeftover) {
-      const fallbackDay = activeDays.slice().sort((d1, d2) =>
-        (plan[week][d1]?.length || 0) - (plan[week][d2]?.length || 0))[0];
-      if (fallbackDay !== undefined) {
-        plan[week][fallbackDay] = plan[week][fallbackDay] || [];
-        plan[week][fallbackDay].push({ ...appt, time: appt.time || TIMES[TIMES.length - 1], _overflow: true });
-        plan[week][fallbackDay].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
-        showToast(`Attenzione: seduta di ${appt.name} forzata oltre l'orario previsto (settimana ${week+1}, giorno troppo pieno)`, 6000);
-      }
+      unplacedThisWeek.push({ id: appt.id, name: appt.name, durata: appt.durata });
+      showToast(`⚠️ Non sono riuscito a piazzare una seduta di ${appt.name} (settimana ${week+1}): nessun posto libero`, 6000);
     }
 
     // Riordino cronologico di sicurezza: qualunque cosa sia successo sopra,
@@ -2898,6 +2910,7 @@ async function generatePlan(onlyWeek = null) {
       else if (dayPlan && dayPlan.source === 'osm') daysWithOsm++;
     }
 
+    plan[week].unplaced = unplacedThisWeek;
     weekPlan[week] = plan[week]; // riprendi i dati aggiornati da recalcDayKm
   }
 
