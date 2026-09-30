@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Giro Fisiotherapy · v5</title>
+<title>Giro Fisiotherapy · v6</title>
 <style>
   :root {
     --teal-50: #E1F5EE; --teal-100: #9FE1CB; --teal-200: #5DCAA5;
@@ -1875,6 +1875,29 @@ function haversineCoords(a, b) {
 }
 
 // Calcola matrice distanze tramite Maps API o geocodifica OSM
+// Google a volte "capisce" un indirizzo in un'altra città (es. "via cavour 21,
+// melegnano" → Cernusco sul Naviglio) e tutte le distanze diventano sbagliate.
+// Si confronta la città scritta con quella restituita da Google; se non
+// coincide, si ricava la posizione con OpenStreetMap e da lì in poi si passa a
+// Google "lat,lon" al posto del testo. La correzione resta salvata nel browser.
+const ADDR_FIX_KEY = 'giro_addrfix_v1';
+function loadAddrFixes() {
+  try { return JSON.parse(localStorage.getItem(ADDR_FIX_KEY) || '{}'); } catch (e) { return {}; }
+}
+function saveAddrFixes(f) {
+  try { localStorage.setItem(ADDR_FIX_KEY, JSON.stringify(f)); } catch (e) { /* storage non disponibile */ }
+}
+const normGeo = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+function cityMismatch(addr, resolved) {
+  if (!resolved || /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+/.test(addr)) return false; // già coordinate
+  const parts = String(addr).split(',');
+  if (parts.length < 2) return false;
+  const city = normGeo(parts[parts.length - 1]).replace(/\b(mi|lo|pv|mb|italia|italy)\b/g, '').replace(/\s+/g, ' ').trim();
+  if (city.length < 3) return false;
+  return !normGeo(resolved).includes(city);
+}
+
 async function buildDistanceMatrix(addresses, apiKey, departureDateTimeStr, mode = 'driving') {
   const n = addresses.length;
   const matrix = Array.from({length: n}, () => new Array(n).fill(0));
@@ -1884,7 +1907,28 @@ async function buildDistanceMatrix(addresses, apiKey, departureDateTimeStr, mode
   // Prova con Google Maps API se disponibile
   if (apiKey && addresses.length <= 10) {
     try {
-      const data = await fetchDistanceMatrix(addresses, addresses, apiKey, departureDateTimeStr, mode);
+      const fixes = loadAddrFixes();
+      const q = () => addresses.map(a => fixes[a] || a);
+      let data = await fetchDistanceMatrix(q(), q(), apiKey, departureDateTimeStr, mode);
+      if (data.status === 'OK') {
+        const bad = addresses.map((a, i) => (!fixes[a] && cityMismatch(a, (data.origin_addresses || [])[i])) ? i : -1).filter(i => i >= 0);
+        const fixedNow = [];
+        for (const i of bad) {
+          const c = await geocodeAddress(addresses[i]);
+          if (c) {
+            fixes[addresses[i]] = `${c.lat.toFixed(5)},${c.lon.toFixed(5)}`;
+            fixedNow.push(`"${addresses[i]}" (Google lo collocava a: ${data.origin_addresses[i]})`);
+          } else if (!geoWarned.has(addresses[i])) {
+            geoWarned.add(addresses[i]);
+            showToast(`⚠️ Google ha collocato "${addresses[i]}" a "${data.origin_addresses[i]}" e non riesco a correggerlo: controlla l'indirizzo (CAP e provincia aiutano)`, 9000);
+          }
+        }
+        if (fixedNow.length > 0) {
+          saveAddrFixes(fixes);
+          data = await fetchDistanceMatrix(q(), q(), apiKey, departureDateTimeStr, mode);
+          showToast('📍 Google collocava male ' + fixedNow.length + ' indirizzo/i: li ho corretti. ' + fixedNow.join(' • '), 9000);
+        }
+      }
       if (data.status === 'OK') {
         data.rows.forEach((row, i) => {
           row.elements.forEach((el, j) => {
@@ -1901,7 +1945,8 @@ async function buildDistanceMatrix(addresses, apiKey, departureDateTimeStr, mode
         return {
           matrix, timeMatrix, source: 'maps', freeMatrix, badPairs,
           resolved: data.origin_addresses || [],
-          traffic: data.rows.some(r => r.elements.some(e => e.duration_in_traffic))
+          traffic: data.rows.some(r => r.elements.some(e => e.duration_in_traffic)),
+          fixes: addresses.filter(a => fixes[a]).map(a => `${a} → ${fixes[a]}`)
         };
       }
     } catch(err) {
@@ -2539,6 +2584,7 @@ async function recalcDayKm(week, day) {
       `Orari: ${dayHours.start}–${dayHours.end}`,
       `Modalità: ${travelMode} · traffico previsto: ${dm.traffic ? 'sì' : 'no'} · partenza: ${departureDateTimeStr || '-'}`,
       (dm.resolved && dm.resolved.length) ? `Google ha capito le tappe come:\n${dm.resolved.map((x, i) => `${i}: ${x}`).join('\n')}` : '',
+      (dm.fixes && dm.fixes.length) ? `Indirizzi corretti automaticamente:\n${dm.fixes.join('\n')}` : '',
       (dm.badPairs && dm.badPairs.length) ? `Tratte NON risolte da Google: ${dm.badPairs.join(', ')}` : '',
       (hasBase && dm.freeMatrix) ? `Da BASE, minuti senza traffico / con traffico:\n${nodes.map((x, j) => j === 0 ? null : `${j} ${nm(x)}: ${dm.freeMatrix[0][j]} / ${Math.round(legMin(0, j))}`).filter(Boolean).join('\n')}` : '',
       `SCELTO:\n${hasBase ? 'BASE → ' : ''}${line(reordered, chosen.sim)}`,
