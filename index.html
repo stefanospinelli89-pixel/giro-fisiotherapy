@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Giro Fisiotherapy · v6</title>
+<title>Giro Fisiotherapy · v7</title>
 <style>
   :root {
     --teal-50: #E1F5EE; --teal-100: #9FE1CB; --teal-200: #5DCAA5;
@@ -1474,7 +1474,25 @@ async function cancelAppt(week, day, apptIdx) {
 
 function showDayDiag(week, day) {
   const a = plan && plan[week] && plan[week][day] && plan[week][day][0];
-  alert(a && a.dbg ? a.dbg : 'Nessun dettaglio disponibile: rigenera il piano.');
+  const text = a && a.dbg ? a.dbg : 'Nessun dettaglio disponibile: rigenera il piano.';
+  const old = document.getElementById('diag-overlay');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'diag-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#fff;color:#222;border-radius:14px;max-width:720px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 30px rgba(0,0,0,.3)';
+  const pre = document.createElement('pre');
+  pre.style.cssText = 'margin:0;padding:16px;overflow:auto;white-space:pre-wrap;font:14px/1.45 system-ui,sans-serif;flex:1';
+  pre.textContent = text;
+  const btn = document.createElement('button');
+  btn.textContent = 'Chiudi';
+  btn.style.cssText = 'margin:8px 16px 16px auto;padding:8px 20px;border:0;border-radius:8px;background:#1a9d78;color:#fff;font-size:15px;cursor:pointer';
+  btn.onclick = () => ov.remove();
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  box.append(pre, btn);
+  ov.append(box);
+  document.body.append(ov);
 }
 
 async function moveAppt(week, fromDay, apptIdx, toDay) {
@@ -2580,15 +2598,15 @@ async function recalcDayKm(week, day) {
     const nodes = [...(hasBase ? [{ name: 'BASE', addr: base }] : []), ...appts];
     const rows = nodes.map((r, i) => `${i}) ` + nodes.map((c, j) => String(Math.round(legMin(i, j))).padStart(3)).join(''));
     withTimes[0].dbg = [
+      `SCELTO:\n${hasBase ? 'BASE → ' : ''}${line(reordered, chosen.sim)}`,
+      pureBest ? `PIÙ CORTO (ignora orari e fasce bloccate):\n${hasBase ? 'BASE → ' : ''}${line(pureBest.order, pureBest.sim)}` : '',
       `Fonte distanze: ${source === 'maps' ? 'Google Maps' : 'stima linea d\'aria (OSM)'}`,
       `Orari: ${dayHours.start}–${dayHours.end}`,
       `Modalità: ${travelMode} · traffico previsto: ${dm.traffic ? 'sì' : 'no'} · partenza: ${departureDateTimeStr || '-'}`,
-      (dm.resolved && dm.resolved.length) ? `Google ha capito le tappe come:\n${dm.resolved.map((x, i) => `${i}: ${x}`).join('\n')}` : '',
+      (dm.resolved && dm.resolved.length) ? `Come Google ha capito gli indirizzi (elenco numerato per la tabella, NON è l\'ordine del giro):\n${dm.resolved.map((x, i) => `${i}: ${x}`).join('\n')}` : '',
       (dm.fixes && dm.fixes.length) ? `Indirizzi corretti automaticamente:\n${dm.fixes.join('\n')}` : '',
       (dm.badPairs && dm.badPairs.length) ? `Tratte NON risolte da Google: ${dm.badPairs.join(', ')}` : '',
       (hasBase && dm.freeMatrix) ? `Da BASE, minuti senza traffico / con traffico:\n${nodes.map((x, j) => j === 0 ? null : `${j} ${nm(x)}: ${dm.freeMatrix[0][j]} / ${Math.round(legMin(0, j))}`).filter(Boolean).join('\n')}` : '',
-      `SCELTO:\n${hasBase ? 'BASE → ' : ''}${line(reordered, chosen.sim)}`,
-      pureBest ? `PIÙ CORTO (ignora orari e fasce bloccate):\n${hasBase ? 'BASE → ' : ''}${line(pureBest.order, pureBest.sim)}` : '',
       `Minuti tra le tappe:\n${nodes.map((x, i) => `${i} = ${nm(x)}${x.addr ? ' (' + String(x.addr).slice(0, 22) + ')' : ''}`).join('\n')}\n${rows.join('\n')}`
     ].filter(Boolean).join('\n\n');
   }
